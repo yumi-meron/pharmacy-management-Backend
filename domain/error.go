@@ -9,4 +9,6 @@ var (
 	ErrNotFound           = errors.New("not found")
 	ErrInsufficientStock  = errors.New("insufficient stock")
 	ErrInvalidCredentials = errors.New("invalid credentials")
+	ErrPhoneNumberTaken   = errors.New("phone number already in use")
+	ErrInvalidOTP         = errors.New("invalid OTP")
 )

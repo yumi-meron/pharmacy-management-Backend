@@ -10,6 +10,7 @@ import (
 	_ "github.com/lib/pq"
 
 	"github.com/pharmacist-backend/delivery/route"
+	"github.com/pharmacist-backend/infrastructure"
 	"github.com/pharmacist-backend/repository"
 	"github.com/pharmacist-backend/usecase"
 )
@@ -31,9 +32,12 @@ func main() {
 	}
 	defer db.Close()
 
+	// Initialize Twilio service
+	twilioService := infrastructure.NewTwilioService()
+
 	// Dependency Injection
 	authRepo := repository.NewAuthRepository(db)
-	authUC := usecase.NewAuthUsecase(authRepo)
+	authUC := usecase.NewAuthUsecase(authRepo, twilioService)
 
 	// Initialize Gin
 	r := gin.Default()
