@@ -2,8 +2,8 @@ package route
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/yumi-meron/pharmacy-management-app/pharmacist-backend/module/delivery/http"
-	"github.com/yumi-meron/pharmacy-management-app/pharmacist-backend/module/usecase"
+	"github.com/pharmacist-backend/usecase"
+	"github.com/pharmacist-backend/delivery/http"
 )
 
 func SetupRoutes(r *gin.Engine, authUC usecase.AuthUsecase) {

@@ -9,30 +9,45 @@ import (
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 
-	"github.com/yumi-meron/pharmacy-management-app/pharmacist-backend/module/delivery/route"
-	"github.com/yumi-meron/pharmacy-management-app/pharmacist-backend/module/repository"
-	"github.com/yumi-meron/pharmacy-management-app/pharmacist-backend/module/usecase"
+	"github.com/pharmacist-backend/delivery/route"
+	"github.com/pharmacist-backend/repository"
+	"github.com/pharmacist-backend/usecase"
 )
 
 func main() {
-	_ = godotenv.Load()
-
-	db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
-	if err != nil {
-		log.Fatal("DB connection failed:", err)
+	// Load environment variables
+	if err := godotenv.Load(); err != nil {
+		log.Println("No .env file found")
 	}
 
-	r := gin.Default()
+	// Connect to database
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL == "" {
+		log.Fatal("DATABASE_URL not set")
+	}
+	db, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		log.Fatal("Failed to connect to database:", err)
+	}
+	defer db.Close()
 
-	// DI setup
+	// Dependency Injection
 	authRepo := repository.NewAuthRepository(db)
 	authUC := usecase.NewAuthUsecase(authRepo)
 
+	// Initialize Gin
+	r := gin.Default()
+
+	// Register routes
 	route.SetupRoutes(r, authUC)
 
+	// Start server
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
-	r.Run(":" + port)
+	log.Printf("Server running on port %s", port)
+	if err := r.Run(":" + port); err != nil {
+		log.Fatal(err)
+	}
 }
