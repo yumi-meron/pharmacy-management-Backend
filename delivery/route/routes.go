@@ -10,45 +10,52 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
-// SetupRoutes configures the API routes
+// SetupRoutes configures the application routes
 func SetupRoutes(
-	router *gin.Engine,
+	r *gin.Engine,
 	authUsecase usecase.AuthUsecase,
+	userUsecase usecase.UserUsecase,
 	pharmacyUsecase usecase.PharmacyUsecase,
-	adminUsecase usecase.AdminUsecase,
 	cfg *config.Config,
 	validator *validator.Validate,
 ) {
 	// Initialize handlers
 	authHandler := http.NewAuthHandler(authUsecase, validator)
+	userHandler := http.NewUserHandler(userUsecase, validator)
 	pharmacyHandler := http.NewPharmacyHandler(pharmacyUsecase, validator)
-	adminHandler := http.NewAdminHandler(adminUsecase, validator)
 
-	// API group
-	api := router.Group("/api")
+	// Middleware
+	authMiddleware := middleware.AuthMiddleware(cfg)
+	adminMiddleware := middleware.RoleMiddleware("admin")
+	adminOwnerMiddleware := middleware.RoleMiddleware("admin", "owner")
 
 	// Auth routes (public)
-	api.POST("/signup", authHandler.Signup)
-	api.POST("/login", authHandler.Login)
-	api.POST("/password/reset", authHandler.RequestPasswordReset)
-	api.POST("/password/reset/confirm", authHandler.ResetPassword)
-	api.POST("/token/refresh", authHandler.RefreshToken)
-
-	// Pharmacy routes (protected)
-	pharmacy := api.Group("/pharmacies")
-	pharmacy.Use(middleware.AuthMiddleware(cfg))
+	auth := r.Group("/auth")
 	{
-		pharmacy.POST("", pharmacyHandler.Create)
-		pharmacy.GET("", pharmacyHandler.GetAll)
-		pharmacy.GET("/:id", pharmacyHandler.GetByID)
-		pharmacy.PUT("/:id", pharmacyHandler.Update)
-		pharmacy.DELETE("/:id", middleware.RoleMiddleware("admin"), pharmacyHandler.Delete)
+		auth.POST("/login", authHandler.Login)
+		auth.POST("/forgot-password", authHandler.RequestPasswordReset)
+		auth.POST("/reset-password", authHandler.ResetPassword)
+		auth.POST("/refresh-token", authHandler.RefreshToken)
 	}
 
-	// Admin routes (protected, admin only)
-	admin := api.Group("/admin")
-	admin.Use(middleware.AuthMiddleware(cfg), middleware.RoleMiddleware("admin"))
+	// User routes (protected)
+	users := r.Group("/api/users")
+	users.Use(authMiddleware)
 	{
-		admin.POST("/users", adminHandler.CreateUser)
+		users.GET("/me", authHandler.GetProfile)
+		users.PUT("/me", authHandler.UpdateProfile)
+		users.POST("/owners", adminMiddleware, userHandler.CreateOwner)
+		users.POST("/pharmacists", adminOwnerMiddleware, userHandler.CreatePharmacist)
+	}
+
+	// Pharmacy routes (protected)
+	pharmacies := r.Group("/api/pharmacies")
+	pharmacies.Use(authMiddleware)
+	{
+		pharmacies.POST("/", adminMiddleware, pharmacyHandler.Create)
+		pharmacies.GET("/", pharmacyHandler.GetAll)
+		pharmacies.GET("/:id", pharmacyHandler.GetByID)
+		pharmacies.PUT("/:id", adminOwnerMiddleware, pharmacyHandler.Update)
+		pharmacies.DELETE("/:id", adminMiddleware, pharmacyHandler.Delete)
 	}
 }

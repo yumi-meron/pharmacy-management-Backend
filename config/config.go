@@ -1,62 +1,49 @@
 package config
 
 import (
-    "errors"
-    "os"
+	"os"
 
-    "github.com/joho/godotenv"
+	"github.com/joho/godotenv"
 )
 
-// Config holds the application configuration
+// Config holds application configuration
 type Config struct {
-    DatabaseURL          string
-    JWTSecret           string
-    RefreshTokenSecret  string
-    TwilioAccountSID    string
-    TwilioAuthToken     string
-    TwilioPhoneNumber   string
-    TwilioMockMode      bool
-    Port                string
+	Port        string
+	DatabaseURL string
+	JWTSecret   string
+	TwilioSID   string
+	TwilioToken string
+	TwilioFrom  string
+	MockTwilio  bool
 }
 
-// Load loads environment variables into a Config struct
+// Load loads configuration from environment variables
 func Load() (*Config, error) {
-    // Load .env file
-    if err := godotenv.Load(); err != nil {
-        return nil, err
-    }
+	_ = godotenv.Load() // Load .env file if present
+	cfg := &Config{
+		Port:        getEnv("PORT", "8080"),
+		DatabaseURL: getEnv("DATABASE_URL", "postgres://user:password@localhost:5432/pharmacist?sslmode=disable"),
+		JWTSecret:   getEnv("JWT_SECRET", "your_jwt_secret"),
+		TwilioSID:   getEnv("TWILIO_SID", ""),
+		TwilioToken: getEnv("TWILIO_TOKEN", ""),
+		TwilioFrom:  getEnv("TWILIO_FROM", ""),
+		MockTwilio:  getEnvBool("TWILIO_MOCK", false),
+	}
+	return cfg, nil
+}
 
-    cfg := &Config{
-        DatabaseURL:         os.Getenv("DATABASE_URL"),
-        JWTSecret:          os.Getenv("JWT_SECRET"),
-        RefreshTokenSecret: os.Getenv("REFRESH_TOKEN_SECRET"),
-        TwilioAccountSID:   os.Getenv("TWILIO_ACCOUNT_SID"),
-        TwilioAuthToken:    os.Getenv("TWILIO_AUTH_TOKEN"),
-        TwilioPhoneNumber:  os.Getenv("TWILIO_PHONE_NUMBER"),
-        TwilioMockMode:     os.Getenv("TWILIO_MOCK_MODE") == "true",
-        Port:               os.Getenv("PORT"),
-    }
+// getEnv retrieves an environment variable or returns a default value
+func getEnv(key, defaultValue string) string {
+	if value, exists := os.LookupEnv(key); exists {
+		return value
+	}
+	return defaultValue
+}
 
-    // Set default port if not specified
-    if cfg.Port == "" {
-        cfg.Port = "8080"
-    }
-
-    // Validate required fields
-    if cfg.DatabaseURL == "" {
-        return nil, errors.New("DATABASE_URL is required")
-    }
-    if cfg.JWTSecret == "" {
-        return nil, errors.New("JWT_SECRET is required")
-    }
-    if cfg.RefreshTokenSecret == "" {
-        return nil, errors.New("REFRESH_TOKEN_SECRET is required")
-    }
-    if !cfg.TwilioMockMode {
-        if cfg.TwilioAccountSID == "" || cfg.TwilioAuthToken == "" || cfg.TwilioPhoneNumber == "" {
-            return nil, errors.New("Twilio configuration is required when TWILIO_MOCK_MODE is false")
-        }
-    }
-
-    return cfg, nil
+// getEnvBool retrieves an environment variable as a boolean
+func getEnvBool(key string, defaultValue bool) bool {
+	if value, exists := os.LookupEnv(key); exists {
+		return value == "true"
+	}
+	return defaultValue
 }

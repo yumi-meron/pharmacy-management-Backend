@@ -1,11 +1,12 @@
 package http
 
 import (
+	"errors"
 	"net/http"
-	"strconv"
 
 	"pharmacist-backend/domain"
 	"pharmacist-backend/usecase"
+	"pharmacist-backend/utils"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
@@ -23,46 +24,71 @@ func NewPharmacyHandler(usecase usecase.PharmacyUsecase, validator *validator.Va
 	return &PharmacyHandler{usecase, validator}
 }
 
-// Create handles POST /pharmacies
+// Create handles POST /api/pharmacies
 func (h *PharmacyHandler) Create(c *gin.Context) {
 	var input domain.Pharmacy
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		utils.ErrorResponse(c, http.StatusBadRequest, err)
 		return
 	}
 
 	// Validate input
 	if err := h.validator.Struct(input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		utils.ErrorResponse(c, http.StatusBadRequest, err)
 		return
 	}
 
-	// Create pharmacy
-	if err := h.usecase.Create(c.Request.Context(), input); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create pharmacy"})
+	role, _ := c.Get("role")
+	if err := h.usecase.Create(c.Request.Context(), role.(string), input); err != nil {
+		switch err {
+		case domain.ErrUnauthorized:
+			utils.ErrorResponse(c, http.StatusForbidden, err)
+		default:
+			utils.ErrorResponse(c, http.StatusInternalServerError, err)
+		}
 		return
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"message": "Pharmacy created successfully"})
 }
 
-// GetByID handles GET /pharmacies/:id
+// GetAll handles GET /api/pharmacies
+func (h *PharmacyHandler) GetAll(c *gin.Context) {
+	role, _ := c.Get("role")
+	userIDStr, _ := c.Get("user_id")
+	userID, _ := uuid.Parse(userIDStr.(string))
+
+	pharmacies, err := h.usecase.GetAll(c.Request.Context(), role.(string), userID)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, pharmacies)
+}
+
+// GetByID handles GET /api/pharmacies/:id
 func (h *PharmacyHandler) GetByID(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid pharmacy ID"})
+		utils.ErrorResponse(c, http.StatusBadRequest, errors.New("invalid pharmacy ID"))
 		return
 	}
 
-	// Retrieve pharmacy
-	pharmacy, err := h.usecase.GetByID(c.Request.Context(), id)
+	role, _ := c.Get("role")
+	userIDStr, _ := c.Get("user_id")
+	userID, _ := uuid.Parse(userIDStr.(string))
+
+	pharmacy, err := h.usecase.GetByID(c.Request.Context(), role.(string), userID, id)
 	if err != nil {
 		switch err {
-		case domain.ErrPharmacyNotFound:
-			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		case domain.ErrNotFound:
+			utils.ErrorResponse(c, http.StatusNotFound, err)
+		case domain.ErrUnauthorized:
+			utils.ErrorResponse(c, http.StatusForbidden, err)
 		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to retrieve pharmacy"})
+			utils.ErrorResponse(c, http.StatusInternalServerError, err)
 		}
 		return
 	}
@@ -70,53 +96,39 @@ func (h *PharmacyHandler) GetByID(c *gin.Context) {
 	c.JSON(http.StatusOK, pharmacy)
 }
 
-// GetAll handles GET /pharmacies
-func (h *PharmacyHandler) GetAll(c *gin.Context) {
-	// Parse query parameters for pagination
-	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
-	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
-
-	// Retrieve pharmacies
-	pharmacies, err := h.usecase.GetAll(c.Request.Context(), offset, limit)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to retrieve pharmacies"})
-		return
-	}
-
-	c.JSON(http.StatusOK, pharmacies)
-}
-
-// Update handles PUT /pharmacies/:id
+// Update handles PUT /api/pharmacies/:id
 func (h *PharmacyHandler) Update(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid pharmacy ID"})
+		utils.ErrorResponse(c, http.StatusBadRequest, errors.New("invalid pharmacy ID"))
 		return
 	}
 
 	var input domain.Pharmacy
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		utils.ErrorResponse(c, http.StatusBadRequest, err)
 		return
 	}
-
-	// Set ID from URL
-	input.ID = id
 
 	// Validate input
 	if err := h.validator.Struct(input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		utils.ErrorResponse(c, http.StatusBadRequest, err)
 		return
 	}
 
-	// Update pharmacy
-	if err := h.usecase.Update(c.Request.Context(), input); err != nil {
+	role, _ := c.Get("role")
+	userIDStr, _ := c.Get("user_id")
+	userID, _ := uuid.Parse(userIDStr.(string))
+
+	if err := h.usecase.Update(c.Request.Context(), role.(string), userID, id, input); err != nil {
 		switch err {
-		case domain.ErrPharmacyNotFound:
-			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		case domain.ErrNotFound:
+			utils.ErrorResponse(c, http.StatusNotFound, err)
+		case domain.ErrUnauthorized:
+			utils.ErrorResponse(c, http.StatusForbidden, err)
 		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update pharmacy"})
+			utils.ErrorResponse(c, http.StatusInternalServerError, err)
 		}
 		return
 	}
@@ -124,22 +136,24 @@ func (h *PharmacyHandler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Pharmacy updated successfully"})
 }
 
-// Delete handles DELETE /pharmacies/:id
+// Delete handles DELETE /api/pharmacies/:id
 func (h *PharmacyHandler) Delete(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid pharmacy ID"})
+		utils.ErrorResponse(c, http.StatusBadRequest, errors.New("invalid pharmacy ID"))
 		return
 	}
 
-	// Delete pharmacy
-	if err := h.usecase.Delete(c.Request.Context(), id); err != nil {
+	role, _ := c.Get("role")
+	if err := h.usecase.Delete(c.Request.Context(), role.(string), id); err != nil {
 		switch err {
-		case domain.ErrPharmacyNotFound:
-			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		case domain.ErrNotFound:
+			utils.ErrorResponse(c, http.StatusNotFound, err)
+		case domain.ErrUnauthorized:
+			utils.ErrorResponse(c, http.StatusForbidden, err)
 		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete pharmacy"})
+			utils.ErrorResponse(c, http.StatusInternalServerError, err)
 		}
 		return
 	}

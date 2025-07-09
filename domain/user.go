@@ -28,12 +28,20 @@ type User struct {
 	UpdatedAt      time.Time `json:"updated_at" validate:"required"`
 }
 
-// SignupInput represents the input for user signup
-type SignupInput struct {
-	PhoneNumber    string    `json:"phone_number" validate:"required,phone" `
-	Password       string    `json:"password" validate:"required,min=2"`
-	FullName       string    `json:"full_name" validate:"required,min=2,max=100"`
-	Role           Role      `json:"role" validate:"required,role"`
+// CreateUserInput represents input for creating a user
+type CreateUserInput struct {
+	PhoneNumber    string    `json:"phone_number" validate:"required,phone"`
+	Password       string    `json:"password" validate:"required,min=8"`
+	FullName       string    `json:"full_name" validate:"required"`
+	Role           Role      `json:"role" validate:"required,oneof=owner pharmacist"`
 	PharmacyID     uuid.UUID `json:"pharmacy_id" validate:"required"`
 	ProfilePicture string    `json:"profile_picture" validate:"omitempty,url"`
+}
+
+// UpdateProfileInput represents input for updating a user profile
+type UpdateProfileInput struct {
+	FullName       string `json:"full_name" validate:"required"`
+	PhoneNumber    string `json:"phone_number" validate:"required,phone"`
+	Password       string `json:"password" validate:"omitempty,min=8"`
+	ProfilePicture string `json:"profile_picture" validate:"omitempty,url"`
 }

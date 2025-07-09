@@ -12,11 +12,11 @@ import (
 
 // PharmacyUsecase defines the interface for pharmacy-related business logic
 type PharmacyUsecase interface {
-	Create(ctx context.Context, input domain.Pharmacy) error
-	GetByID(ctx context.Context, id uuid.UUID) (*domain.Pharmacy, error)
-	GetAll(ctx context.Context, offset, limit int) ([]domain.Pharmacy, error)
-	Update(ctx context.Context, input domain.Pharmacy) error
-	Delete(ctx context.Context, id uuid.UUID) error
+	Create(ctx context.Context, callerRole string, input domain.Pharmacy) error
+	GetAll(ctx context.Context, callerRole string, callerPharmacyID uuid.UUID) ([]domain.Pharmacy, error)
+	GetByID(ctx context.Context, callerRole string, callerPharmacyID, id uuid.UUID) (*domain.Pharmacy, error)
+	Update(ctx context.Context, callerRole string, callerPharmacyID, id uuid.UUID, input domain.Pharmacy) error
+	Delete(ctx context.Context, callerRole string, id uuid.UUID) error
 }
 
 // pharmacyUsecase implements PharmacyUsecase
@@ -26,12 +26,15 @@ type pharmacyUsecase struct {
 
 // NewPharmacyUsecase creates a new PharmacyUsecase
 func NewPharmacyUsecase(repo repository.PharmacyRepository) PharmacyUsecase {
-	return &pharmacyUsecase{repo: repo}
+	return &pharmacyUsecase{repo}
 }
 
-// Create creates a new pharmacy
-func (u *pharmacyUsecase) Create(ctx context.Context, input domain.Pharmacy) error {
-	// Set timestamps
+// Create creates a new pharmacy (admin-only)
+func (u *pharmacyUsecase) Create(ctx context.Context, callerRole string, input domain.Pharmacy) error {
+	if callerRole != string(domain.RoleAdmin) {
+		return domain.ErrUnauthorized
+	}
+
 	input.ID = uuid.New()
 	input.CreatedAt = time.Now()
 	input.UpdatedAt = time.Now()
@@ -39,30 +42,44 @@ func (u *pharmacyUsecase) Create(ctx context.Context, input domain.Pharmacy) err
 	return u.repo.Create(ctx, input)
 }
 
-// GetByID retrieves a pharmacy by ID
-func (u *pharmacyUsecase) GetByID(ctx context.Context, id uuid.UUID) (*domain.Pharmacy, error) {
+// GetAll retrieves pharmacies based on role
+func (u *pharmacyUsecase) GetAll(ctx context.Context, callerRole string, callerPharmacyID uuid.UUID) ([]domain.Pharmacy, error) {
+	if callerRole == string(domain.RoleAdmin) {
+		return u.repo.GetAll(ctx)
+	}
+	pharmacy, err := u.repo.GetByID(ctx, callerPharmacyID)
+	if err != nil {
+		return nil, err
+	}
+	return []domain.Pharmacy{*pharmacy}, nil
+}
+
+// GetByID retrieves a pharmacy with role-based restrictions
+func (u *pharmacyUsecase) GetByID(ctx context.Context, callerRole string, callerPharmacyID, id uuid.UUID) (*domain.Pharmacy, error) {
+	if callerRole != string(domain.RoleAdmin) && callerPharmacyID != id {
+		return nil, domain.ErrUnauthorized
+	}
 	return u.repo.GetByID(ctx, id)
 }
 
-// GetAll retrieves all pharmacies with pagination
-func (u *pharmacyUsecase) GetAll(ctx context.Context, offset, limit int) ([]domain.Pharmacy, error) {
-	return u.repo.GetAll(ctx, offset, limit)
-}
+// Update updates a pharmacy with role-based restrictions
+func (u *pharmacyUsecase) Update(ctx context.Context, callerRole string, callerPharmacyID, id uuid.UUID, input domain.Pharmacy) error {
+	if callerRole != string(domain.RoleAdmin) && callerPharmacyID != id {
+		return domain.ErrUnauthorized
+	}
+	if callerRole == string(domain.RolePharmacist) {
+		return domain.ErrUnauthorized
+	}
 
-// Update updates a pharmacy's details
-func (u *pharmacyUsecase) Update(ctx context.Context, input domain.Pharmacy) error {
-	// Update timestamp
+	input.ID = id
 	input.UpdatedAt = time.Now()
-
 	return u.repo.Update(ctx, input)
 }
 
-// Delete deletes a pharmacy by ID
-func (u *pharmacyUsecase) Delete(ctx context.Context, id uuid.UUID) error {
-	// Check if pharmacy exists
-	if _, err := u.repo.GetByID(ctx, id); err != nil {
-		return err
+// Delete deletes a pharmacy (admin-only)
+func (u *pharmacyUsecase) Delete(ctx context.Context, callerRole string, id uuid.UUID) error {
+	if callerRole != string(domain.RoleAdmin) {
+		return domain.ErrUnauthorized
 	}
-
 	return u.repo.Delete(ctx, id)
 }

@@ -17,11 +17,12 @@ import (
 
 // AuthUsecase defines the interface for authentication-related business logic
 type AuthUsecase interface {
-	Signup(ctx context.Context, input domain.SignupInput) error
 	Login(ctx context.Context, phoneNumber, password string) (string, string, error)
 	RequestPasswordReset(ctx context.Context, phoneNumber string) error
 	ResetPassword(ctx context.Context, token, newPassword string) error
 	RefreshToken(ctx context.Context, refreshToken string) (string, string, error)
+	GetProfile(ctx context.Context, userID uuid.UUID) (*domain.User, error)
+	UpdateProfile(ctx context.Context, userID uuid.UUID, input domain.UpdateProfileInput) error
 }
 
 // authUsecase implements AuthUsecase
@@ -34,36 +35,6 @@ type authUsecase struct {
 // NewAuthUsecase creates a new AuthUsecase
 func NewAuthUsecase(repo repository.AuthRepository, twilio *infrastructure.TwilioService, cfg *config.Config) AuthUsecase {
 	return &authUsecase{repo, twilio, cfg}
-}
-
-// Signup creates a new user
-func (u *authUsecase) Signup(ctx context.Context, input domain.SignupInput) error {
-	// Check if phone number is taken
-	if existingUser, _ := u.repo.GetByPhone(ctx, input.PhoneNumber); existingUser != nil {
-		return domain.ErrPhoneNumberTaken
-	}
-
-	// Hash password
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
-	if err != nil {
-		return err
-	}
-
-	// Create user entity
-	user := domain.User{
-		ID:             uuid.New(),
-		PhoneNumber:    input.PhoneNumber,
-		Password:       string(hashedPassword),
-		FullName:       input.FullName,
-		Role:           input.Role,
-		PharmacyID:     input.PharmacyID,
-		ProfilePicture: input.ProfilePicture,
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
-	}
-
-	// Save user to database
-	return u.repo.Create(ctx, user)
 }
 
 // Login authenticates a user and returns access and refresh tokens
@@ -82,7 +53,7 @@ func (u *authUsecase) Login(ctx context.Context, phoneNumber, password string) (
 	}
 
 	// Generate access token
-	accessToken, err := u.generateAccessToken(user.ID, user.Role)
+	accessToken, err := u.generateAccessToken(user.ID, user.Role, user.PharmacyID)
 	if err != nil {
 		return "", "", err
 	}
@@ -129,7 +100,7 @@ func (u *authUsecase) RequestPasswordReset(ctx context.Context, phoneNumber stri
 func (u *authUsecase) ResetPassword(ctx context.Context, token, newPassword string) error {
 	userID, err := u.repo.GetResetToken(ctx, token)
 	if err != nil {
-		return err
+		return domain.ErrInvalidResetToken
 	}
 
 	// Retrieve user
@@ -159,7 +130,7 @@ func (u *authUsecase) ResetPassword(ctx context.Context, token, newPassword stri
 func (u *authUsecase) RefreshToken(ctx context.Context, refreshToken string) (string, string, error) {
 	userID, err := u.repo.GetRefreshToken(ctx, refreshToken)
 	if err != nil {
-		return "", "", err
+		return "", "", domain.ErrInvalidToken
 	}
 
 	user, err := u.repo.GetByID(ctx, *userID)
@@ -168,7 +139,7 @@ func (u *authUsecase) RefreshToken(ctx context.Context, refreshToken string) (st
 	}
 
 	// Generate new access token
-	accessToken, err := u.generateAccessToken(user.ID, user.Role)
+	accessToken, err := u.generateAccessToken(user.ID, user.Role, user.PharmacyID)
 	if err != nil {
 		return "", "", err
 	}
@@ -192,12 +163,54 @@ func (u *authUsecase) RefreshToken(ctx context.Context, refreshToken string) (st
 	return accessToken, newRefreshToken, nil
 }
 
+// GetProfile retrieves the user's profile
+func (u *authUsecase) GetProfile(ctx context.Context, userID uuid.UUID) (*domain.User, error) {
+	user, err := u.repo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+
+// UpdateProfile updates the user's profile
+func (u *authUsecase) UpdateProfile(ctx context.Context, userID uuid.UUID, input domain.UpdateProfileInput) error {
+	user, err := u.repo.GetByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	// Check if phone number is taken by another user
+	if input.PhoneNumber != user.PhoneNumber {
+		if existingUser, _ := u.repo.GetByPhone(ctx, input.PhoneNumber); existingUser != nil {
+			return domain.ErrPhoneNumberTaken
+		}
+	}
+
+	// Update fields
+	user.FullName = input.FullName
+	user.PhoneNumber = input.PhoneNumber
+	if input.Password != "" {
+		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
+		if err != nil {
+			return err
+		}
+		user.Password = string(hashedPassword)
+	}
+	if input.ProfilePicture != "" {
+		user.ProfilePicture = input.ProfilePicture
+	}
+	user.UpdatedAt = time.Now()
+
+	return u.repo.Update(ctx, *user)
+}
+
 // generateAccessToken creates a JWT access token
-func (u *authUsecase) generateAccessToken(userID uuid.UUID, role domain.Role) (string, error) {
+func (u *authUsecase) generateAccessToken(userID uuid.UUID, role domain.Role, pharmacyID uuid.UUID) (string, error) {
 	claims := jwt.MapClaims{
-		"user_id": userID.String(),
-		"role":    role,
-		"exp":     time.Now().Add(15 * time.Minute).Unix(),
+		"user_id":     userID.String(),
+		"role":        role,
+		"pharmacy_id": pharmacyID.String(),
+		"exp":         time.Now().Add(15 * time.Minute).Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(u.cfg.JWTSecret))
@@ -205,6 +218,5 @@ func (u *authUsecase) generateAccessToken(userID uuid.UUID, role domain.Role) (s
 
 // generateRefreshToken creates a refresh token
 func (u *authUsecase) generateRefreshToken(userID uuid.UUID) (string, error) {
-	token := utils.GenerateRandomString(32)
-	return token, nil
+	return utils.GenerateRandomString(32)
 }

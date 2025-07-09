@@ -20,7 +20,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// main initializes and starts the application
 func main() {
 	// Initialize logger
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
@@ -44,7 +43,6 @@ func main() {
 
 	// Initialize validator
 	v := utils.NewValidator()
-	logger.Info().Msg("Testing custom validations")
 	if err := utils.DebugValidator(v); err != nil {
 		logger.Fatal().Err(err).Msg("Custom validations failed")
 	}
@@ -52,13 +50,12 @@ func main() {
 
 	// Initialize repositories
 	authRepo := repository.NewAuthRepository(db, logger)
-	pharmacyRepo := repository.NewPharmacyRepository(db)
-	adminRepo := repository.NewAdminRepository(db)
+	pharmacyRepo := repository.NewPharmacyRepository(db, logger)
 
 	// Initialize use cases
 	authUsecase := usecase.NewAuthUsecase(authRepo, twilioService, cfg)
+	userUsecase := usecase.NewUserUsecase(authRepo)
 	pharmacyUsecase := usecase.NewPharmacyUsecase(pharmacyRepo)
-	adminUsecase := usecase.NewAdminUsecase(adminRepo)
 
 	// Initialize Gin router
 	router := gin.Default()
@@ -67,7 +64,7 @@ func main() {
 	router.Use(middleware.LoggerMiddleware(logger))
 
 	// Set up routes
-	route.SetupRoutes(router, authUsecase, pharmacyUsecase, adminUsecase, cfg, v)
+	route.SetupRoutes(router, authUsecase, userUsecase, pharmacyUsecase, cfg, v)
 
 	// Start server with graceful shutdown
 	srv := &http.Server{
@@ -75,7 +72,6 @@ func main() {
 		Handler: router,
 	}
 
-	// Run server in a goroutine
 	go func() {
 		logger.Info().Msgf("Starting server on :%s", cfg.Port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -89,7 +85,6 @@ func main() {
 	<-quit
 	logger.Info().Msg("Shutting down server...")
 
-	// Perform graceful shutdown
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {

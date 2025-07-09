@@ -1,13 +1,16 @@
 package http
 
 import (
+	"errors"
 	"net/http"
 
 	"pharmacist-backend/domain"
 	"pharmacist-backend/usecase"
+	"pharmacist-backend/utils"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
+	"github.com/google/uuid"
 )
 
 // AuthHandler handles authentication-related HTTP requests
@@ -21,50 +24,20 @@ func NewAuthHandler(usecase usecase.AuthUsecase, validator *validator.Validate) 
 	return &AuthHandler{usecase, validator}
 }
 
-// Signup handles POST /signup
-func (h *AuthHandler) Signup(c *gin.Context) {
-	var input domain.SignupInput
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Validate input
-	if err := h.validator.Struct(input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Create user
-	if err := h.usecase.Signup(c.Request.Context(), input); err != nil {
-		switch err {
-		case domain.ErrPhoneNumberTaken:
-			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
-		case domain.ErrInvalidRole:
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create user"})
-		}
-		return
-	}
-
-	c.JSON(http.StatusCreated, gin.H{"message": "User created successfully"})
-}
-
-// Login handles POST /login
+// Login handles POST /auth/login
 func (h *AuthHandler) Login(c *gin.Context) {
 	var input struct {
 		PhoneNumber string `json:"phone_number" validate:"required,phone"`
-		Password    string `json:"password" validate:"required,min=2"`
+		Password    string `json:"password" validate:"required,min=8"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		utils.ErrorResponse(c, http.StatusBadRequest, err)
 		return
 	}
 
 	// Validate input
 	if err := h.validator.Struct(input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		utils.ErrorResponse(c, http.StatusBadRequest, err)
 		return
 	}
 
@@ -73,9 +46,9 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	if err != nil {
 		switch err {
 		case domain.ErrInvalidCredentials:
-			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+			utils.ErrorResponse(c, http.StatusUnauthorized, err)
 		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			utils.ErrorResponse(c, http.StatusInternalServerError, err)
 		}
 		return
 	}
@@ -86,19 +59,19 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	})
 }
 
-// RequestPasswordReset handles POST /password/reset
+// RequestPasswordReset handles POST /auth/forgot-password
 func (h *AuthHandler) RequestPasswordReset(c *gin.Context) {
 	var input struct {
 		PhoneNumber string `json:"phone_number" validate:"required,phone"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		utils.ErrorResponse(c, http.StatusBadRequest, err)
 		return
 	}
 
 	// Validate input
 	if err := h.validator.Struct(input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		utils.ErrorResponse(c, http.StatusBadRequest, err)
 		return
 	}
 
@@ -106,9 +79,9 @@ func (h *AuthHandler) RequestPasswordReset(c *gin.Context) {
 	if err := h.usecase.RequestPasswordReset(c.Request.Context(), input.PhoneNumber); err != nil {
 		switch err {
 		case domain.ErrNotFound:
-			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			utils.ErrorResponse(c, http.StatusNotFound, err)
 		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to request password reset"})
+			utils.ErrorResponse(c, http.StatusInternalServerError, err)
 		}
 		return
 	}
@@ -116,20 +89,20 @@ func (h *AuthHandler) RequestPasswordReset(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Password reset code sent"})
 }
 
-// ResetPassword handles POST /password/reset/confirm
+// ResetPassword handles POST /auth/reset-password
 func (h *AuthHandler) ResetPassword(c *gin.Context) {
 	var input struct {
 		Token       string `json:"token" validate:"required"`
 		NewPassword string `json:"new_password" validate:"required,min=8"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		utils.ErrorResponse(c, http.StatusBadRequest, err)
 		return
 	}
 
 	// Validate input
 	if err := h.validator.Struct(input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		utils.ErrorResponse(c, http.StatusBadRequest, err)
 		return
 	}
 
@@ -137,9 +110,9 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 	if err := h.usecase.ResetPassword(c.Request.Context(), input.Token, input.NewPassword); err != nil {
 		switch err {
 		case domain.ErrInvalidResetToken:
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			utils.ErrorResponse(c, http.StatusBadRequest, err)
 		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to reset password"})
+			utils.ErrorResponse(c, http.StatusInternalServerError, err)
 		}
 		return
 	}
@@ -147,19 +120,19 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Password reset successfully"})
 }
 
-// RefreshToken handles POST /token/refresh
+// RefreshToken handles POST /auth/refresh-token
 func (h *AuthHandler) RefreshToken(c *gin.Context) {
 	var input struct {
 		RefreshToken string `json:"refresh_token" validate:"required"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		utils.ErrorResponse(c, http.StatusBadRequest, err)
 		return
 	}
 
 	// Validate input
 	if err := h.validator.Struct(input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		utils.ErrorResponse(c, http.StatusBadRequest, err)
 		return
 	}
 
@@ -168,9 +141,9 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 	if err != nil {
 		switch err {
 		case domain.ErrInvalidToken:
-			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+			utils.ErrorResponse(c, http.StatusUnauthorized, err)
 		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to refresh token"})
+			utils.ErrorResponse(c, http.StatusInternalServerError, err)
 		}
 		return
 	}
@@ -179,4 +152,82 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 		"access_token":  accessToken,
 		"refresh_token": refreshToken,
 	})
+}
+
+// GetProfile handles GET /api/users/me
+func (h *AuthHandler) GetProfile(c *gin.Context) {
+	userIDStr, exists := c.Get("user_id")
+	if !exists {
+		utils.ErrorResponse(c, http.StatusUnauthorized, errors.New("user ID not found in context"))
+		return
+	}
+
+	userID, err := uuid.Parse(userIDStr.(string))
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, errors.New("invalid user ID"))
+		return
+	}
+
+	user, err := h.usecase.GetProfile(c.Request.Context(), userID)
+	if err != nil {
+		switch err {
+		case domain.ErrNotFound:
+			utils.ErrorResponse(c, http.StatusNotFound, err)
+		default:
+			utils.ErrorResponse(c, http.StatusInternalServerError, err)
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"id":              user.ID,
+		"phone_number":    user.PhoneNumber,
+		"full_name":       user.FullName,
+		"role":            user.Role,
+		"pharmacy_id":     user.PharmacyID,
+		"profile_picture": user.ProfilePicture,
+		"created_at":      user.CreatedAt,
+		"updated_at":      user.UpdatedAt,
+	})
+}
+
+// UpdateProfile handles PUT /api/users/me
+func (h *AuthHandler) UpdateProfile(c *gin.Context) {
+	var input domain.UpdateProfileInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, err)
+		return
+	}
+
+	// Validate input
+	if err := h.validator.Struct(input); err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, err)
+		return
+	}
+
+	userIDStr, exists := c.Get("user_id")
+	if !exists {
+		utils.ErrorResponse(c, http.StatusUnauthorized, errors.New("user ID not found in context"))
+		return
+	}
+
+	userID, err := uuid.Parse(userIDStr.(string))
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, errors.New("invalid user ID"))
+		return
+	}
+
+	if err := h.usecase.UpdateProfile(c.Request.Context(), userID, input); err != nil {
+		switch err {
+		case domain.ErrPhoneNumberTaken:
+			utils.ErrorResponse(c, http.StatusConflict, err)
+		case domain.ErrNotFound:
+			utils.ErrorResponse(c, http.StatusNotFound, err)
+		default:
+			utils.ErrorResponse(c, http.StatusInternalServerError, err)
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Profile updated successfully"})
 }
