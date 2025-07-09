@@ -3,12 +3,19 @@ package domain
 import "errors"
 
 var (
-	ErrInvalidInput       = errors.New("invalid input")
-	ErrInternalServer     = errors.New("internal server error")
-	ErrUnauthorized       = errors.New("unauthorized")
-	ErrNotFound           = errors.New("not found")
-	ErrInsufficientStock  = errors.New("insufficient stock")
-	ErrInvalidCredentials = errors.New("invalid credentials")
-	ErrPhoneNumberTaken   = errors.New("phone number already in use")
-	ErrInvalidOTP         = errors.New("invalid OTP")
+	ErrPhoneNumberTaken    = errors.New("phone number already taken")
+	ErrInvalidCredentials  = errors.New("invalid credentials")
+	ErrInvalidRefreshToken = errors.New("invalid or expired refresh token")
+	ErrUserNotFound        = errors.New("user not found")
+	ErrInvalidResetToken   = errors.New("invalid or expired reset token")
+
+	ErrInvalidInput      = errors.New("invalid input")
+	ErrInternalServer    = errors.New("internal server error")
+	ErrNotFound          = errors.New("not found")
+	ErrInsufficientStock = errors.New("insufficient stock")
+	ErrInvalidOTP        = errors.New("invalid OTP")
+	ErrInvalidRole       = errors.New("invalid role")
+	ErrUnauthorized      = errors.New("unauthorized access")
+	ErrInvalidToken      = errors.New("invalid or expired token")
+	ErrPharmacyNotFound  = errors.New("pharmacy is not found")
 )

@@ -1,57 +1,99 @@
 package main
 
 import (
-	"database/sql"
-	"log"
+	"context"
+	"net/http"
 	"os"
+	"os/signal"
+	"time"
+
+	"pharmacist-backend/config"
+	"pharmacist-backend/delivery/route"
+	"pharmacist-backend/infrastructure"
+	"pharmacist-backend/infrastructure/middleware"
+	"pharmacist-backend/repository"
+	"pharmacist-backend/usecase"
+	"pharmacist-backend/utils"
 
 	"github.com/gin-gonic/gin"
-	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
-
-	"github.com/pharmacist-backend/delivery/route"
-	"github.com/pharmacist-backend/infrastructure"
-	"github.com/pharmacist-backend/repository"
-	"github.com/pharmacist-backend/usecase"
+	"github.com/rs/zerolog"
 )
 
+// main initializes and starts the application
 func main() {
-	// Load environment variables
-	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found")
+	// Initialize logger
+	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
+	logger := zerolog.New(zerolog.NewConsoleWriter()).With().Timestamp().Logger()
+
+	// Load configuration
+	cfg, err := config.Load()
+	if err != nil {
+		logger.Fatal().Err(err).Msg("Failed to load configuration")
 	}
 
-	// Connect to database
-	dbURL := os.Getenv("DATABASE_URL")
-	if dbURL == "" {
-		log.Fatal("DATABASE_URL not set")
-	}
-	db, err := sql.Open("postgres", dbURL)
+	// Initialize database
+	db, err := infrastructure.NewDatabase(cfg, logger)
 	if err != nil {
-		log.Fatal("Failed to connect to database:", err)
+		logger.Fatal().Err(err).Msg("Failed to initialize database")
 	}
 	defer db.Close()
 
 	// Initialize Twilio service
-	twilioService := infrastructure.NewTwilioService()
+	twilioService := infrastructure.NewTwilioService(cfg, logger)
 
-	// Dependency Injection
-	authRepo := repository.NewAuthRepository(db)
-	authUC := usecase.NewAuthUsecase(authRepo, twilioService)
-
-	// Initialize Gin
-	r := gin.Default()
-
-	// Register routes
-	route.SetupRoutes(r, authUC)
-
-	// Start server
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
+	// Initialize validator
+	v := utils.NewValidator()
+	logger.Info().Msg("Testing custom validations")
+	if err := utils.DebugValidator(v); err != nil {
+		logger.Fatal().Err(err).Msg("Custom validations failed")
 	}
-	log.Printf("Server running on port %s", port)
-	if err := r.Run(":" + port); err != nil {
-		log.Fatal(err)
+	logger.Info().Msg("Custom validations registered successfully")
+
+	// Initialize repositories
+	authRepo := repository.NewAuthRepository(db, logger)
+	pharmacyRepo := repository.NewPharmacyRepository(db)
+	adminRepo := repository.NewAdminRepository(db)
+
+	// Initialize use cases
+	authUsecase := usecase.NewAuthUsecase(authRepo, twilioService, cfg)
+	pharmacyUsecase := usecase.NewPharmacyUsecase(pharmacyRepo)
+	adminUsecase := usecase.NewAdminUsecase(adminRepo)
+
+	// Initialize Gin router
+	router := gin.Default()
+
+	// Add logger middleware
+	router.Use(middleware.LoggerMiddleware(logger))
+
+	// Set up routes
+	route.SetupRoutes(router, authUsecase, pharmacyUsecase, adminUsecase, cfg, v)
+
+	// Start server with graceful shutdown
+	srv := &http.Server{
+		Addr:    ":" + cfg.Port,
+		Handler: router,
 	}
+
+	// Run server in a goroutine
+	go func() {
+		logger.Info().Msgf("Starting server on :%s", cfg.Port)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Fatal().Err(err).Msg("Server failed to start")
+		}
+	}()
+
+	// Wait for interrupt signal
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt)
+	<-quit
+	logger.Info().Msg("Shutting down server...")
+
+	// Perform graceful shutdown
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		logger.Fatal().Err(err).Msg("Server shutdown failed")
+	}
+	logger.Info().Msg("Server shutdown complete")
 }
