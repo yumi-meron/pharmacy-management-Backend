@@ -1,10 +1,10 @@
 package route
 
 import (
-	"pharmacist-backend/config"
-	"pharmacist-backend/delivery/http"
-	"pharmacist-backend/infrastructure/middleware"
-	"pharmacist-backend/usecase"
+	"pharmacy-management-backend/config"
+	"pharmacy-management-backend/delivery/http"
+	"pharmacy-management-backend/infrastructure/middleware"
+	"pharmacy-management-backend/usecase"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"

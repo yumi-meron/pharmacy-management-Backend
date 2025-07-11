@@ -1,4 +1,4 @@
-module pharmacist-backend
+module pharmacy-management-backend
 
 go 1.23.10
 

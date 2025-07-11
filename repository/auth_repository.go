@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"time"
 
-	"pharmacist-backend/domain"
+	"pharmacy-management-backend/domain"
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"

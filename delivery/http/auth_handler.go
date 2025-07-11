@@ -4,9 +4,9 @@ import (
 	"errors"
 	"net/http"
 
-	"pharmacist-backend/domain"
-	"pharmacist-backend/usecase"
-	"pharmacist-backend/utils"
+	"pharmacy-management-backend/domain"
+	"pharmacy-management-backend/usecase"
+	"pharmacy-management-backend/utils"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"

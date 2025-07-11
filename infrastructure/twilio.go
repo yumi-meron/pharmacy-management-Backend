@@ -1,7 +1,7 @@
 package infrastructure
 
 import (
-	"pharmacist-backend/config"
+	"pharmacy-management-backend/config"
 
 	"github.com/rs/zerolog"
 	"github.com/twilio/twilio-go"

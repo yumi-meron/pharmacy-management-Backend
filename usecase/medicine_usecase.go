@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"pharmacist-backend/domain"
-	"pharmacist-backend/repository"
+	"pharmacy-management-backend/domain"
+	"pharmacy-management-backend/repository"
 
 	"github.com/google/uuid"
 )

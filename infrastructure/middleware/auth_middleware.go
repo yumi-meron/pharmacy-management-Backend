@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"strings"
 
-	"pharmacist-backend/config"
-	"pharmacist-backend/domain"
-	"pharmacist-backend/utils"
+	"pharmacy-management-backend/config"
+	"pharmacy-management-backend/domain"
+	"pharmacy-management-backend/utils"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"

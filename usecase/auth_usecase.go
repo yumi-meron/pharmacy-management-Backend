@@ -4,11 +4,11 @@ import (
 	"context"
 	"time"
 
-	"pharmacist-backend/config"
-	"pharmacist-backend/domain"
-	"pharmacist-backend/infrastructure"
-	"pharmacist-backend/repository"
-	"pharmacist-backend/utils"
+	"pharmacy-management-backend/config"
+	"pharmacy-management-backend/domain"
+	"pharmacy-management-backend/infrastructure"
+	"pharmacy-management-backend/repository"
+	"pharmacy-management-backend/utils"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"

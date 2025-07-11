@@ -3,7 +3,7 @@ package infrastructure
 import (
 	"database/sql"
 
-	"pharmacist-backend/config"
+	"pharmacy-management-backend/config"
 
 	"github.com/rs/zerolog"
 )

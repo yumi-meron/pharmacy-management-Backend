@@ -4,7 +4,7 @@ import (
 	"errors"
 	"net/http"
 
-	"pharmacist-backend/utils"
+	"pharmacy-management-backend/utils"
 
 	"github.com/gin-gonic/gin"
 )
