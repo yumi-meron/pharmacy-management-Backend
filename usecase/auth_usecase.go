@@ -210,7 +210,7 @@ func (u *authUsecase) generateAccessToken(userID uuid.UUID, role domain.Role, ph
 		"user_id":     userID.String(),
 		"role":        role,
 		"pharmacy_id": pharmacyID.String(),
-		"exp":         time.Now().Add(15 * time.Minute).Unix(),
+		"exp":         time.Now().Add(24 * time.Hour).Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(u.cfg.JWTSecret))

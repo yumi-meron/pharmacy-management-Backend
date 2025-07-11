@@ -16,6 +16,7 @@ func SetupRoutes(
 	authUsecase usecase.AuthUsecase,
 	userUsecase usecase.UserUsecase,
 	pharmacyUsecase usecase.PharmacyUsecase,
+	medicineUsecase usecase.MedicineUsecase,
 	cfg *config.Config,
 	validator *validator.Validate,
 ) {
@@ -23,6 +24,7 @@ func SetupRoutes(
 	authHandler := http.NewAuthHandler(authUsecase, validator)
 	userHandler := http.NewUserHandler(userUsecase, validator)
 	pharmacyHandler := http.NewPharmacyHandler(pharmacyUsecase, validator)
+	medicineHandler := http.NewMedicineHandler(medicineUsecase, validator)
 
 	// Middleware
 	authMiddleware := middleware.AuthMiddleware(cfg)
@@ -57,5 +59,21 @@ func SetupRoutes(
 		pharmacies.GET("/:id", pharmacyHandler.GetByID)
 		pharmacies.PUT("/:id", adminOwnerMiddleware, pharmacyHandler.Update)
 		pharmacies.DELETE("/:id", adminMiddleware, pharmacyHandler.Delete)
+	}
+
+	// Medicine routes (protected)
+	medicines := r.Group("/api/medicines")
+	medicines.Use(authMiddleware)
+	{
+		medicines.POST("/", adminOwnerMiddleware, medicineHandler.Create)
+		medicines.GET("/", medicineHandler.GetAll)
+		medicines.GET("/:id", medicineHandler.GetByID)
+		medicines.PUT("/:id", adminOwnerMiddleware, medicineHandler.Update)
+		medicines.DELETE("/:id", adminMiddleware, medicineHandler.Delete)
+		medicines.POST("/:id/variants", adminOwnerMiddleware, medicineHandler.CreateVariant)
+		medicines.GET("/:id/variants", medicineHandler.GetVariants)
+		medicines.GET("/:id/variants/:variant_id", medicineHandler.GetVariantByID)
+		medicines.PUT("/:id/variants/:variant_id", adminOwnerMiddleware, medicineHandler.UpdateVariant)
+		medicines.DELETE("/:id/variants/:variant_id", adminMiddleware, medicineHandler.DeleteVariant)
 	}
 }

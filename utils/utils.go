@@ -3,6 +3,8 @@ package utils
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"regexp"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
@@ -33,7 +35,6 @@ func NewValidator() *validator.Validate {
 	v := validator.New()
 	v.RegisterValidation("phone", func(fl validator.FieldLevel) bool {
 		phone := fl.Field().String()
-		// Simple phone number validation (e.g., starts with +, followed by digits)
 		if len(phone) < 10 || phone[0] != '+' {
 			return false
 		}
@@ -43,6 +44,15 @@ func NewValidator() *validator.Validate {
 			}
 		}
 		return true
+	})
+	v.RegisterValidation("barcode", func(fl validator.FieldLevel) bool {
+		barcode := fl.Field().String()
+		// Allow alphanumeric barcodes up to 50 characters
+		return len(barcode) > 0 && len(barcode) <= 50 && regexp.MustCompile(`^[a-zA-Z0-9]+$`).MatchString(barcode)
+	})
+	v.RegisterValidation("future_date", func(fl validator.FieldLevel) bool {
+		date := fl.Field().Interface().(time.Time)
+		return date.After(time.Now())
 	})
 	return v
 }
