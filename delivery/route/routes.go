@@ -17,6 +17,7 @@ func SetupRoutes(
 	userUsecase usecase.UserUsecase,
 	pharmacyUsecase usecase.PharmacyUsecase,
 	medicineUsecase usecase.MedicineUsecase,
+	saleUsecase usecase.SaleUsecase,
 	cfg *config.Config,
 	validator *validator.Validate,
 ) {
@@ -25,11 +26,13 @@ func SetupRoutes(
 	userHandler := http.NewUserHandler(userUsecase, validator)
 	pharmacyHandler := http.NewPharmacyHandler(pharmacyUsecase, validator)
 	medicineHandler := http.NewMedicineHandler(medicineUsecase, validator)
+	saleHandler := http.NewSaleHandler(saleUsecase, validator)
 
 	// Middleware
 	authMiddleware := middleware.AuthMiddleware(cfg)
 	adminMiddleware := middleware.RoleMiddleware("admin")
 	adminOwnerMiddleware := middleware.RoleMiddleware("admin", "owner")
+	saleMiddleware := middleware.RoleMiddleware("owner", "pharmacist")
 
 	// Auth routes (public)
 	auth := r.Group("/auth")
@@ -67,6 +70,7 @@ func SetupRoutes(
 	{
 		medicines.POST("/", adminOwnerMiddleware, medicineHandler.Create)
 		medicines.GET("/", medicineHandler.GetAll)
+		medicines.GET("/search", saleMiddleware, saleHandler.SearchMedicines)
 		medicines.GET("/:id", medicineHandler.GetByID)
 		medicines.PUT("/:id", adminOwnerMiddleware, medicineHandler.Update)
 		medicines.DELETE("/:id", adminMiddleware, medicineHandler.Delete)
@@ -75,5 +79,23 @@ func SetupRoutes(
 		medicines.GET("/:id/variants/:variant_id", medicineHandler.GetVariantByID)
 		medicines.PUT("/:id/variants/:variant_id", adminOwnerMiddleware, medicineHandler.UpdateVariant)
 		medicines.DELETE("/:id/variants/:variant_id", adminMiddleware, medicineHandler.DeleteVariant)
+	}
+
+	// Sale routes (protected)
+	sales := r.Group("/api/sales")
+	sales.Use(authMiddleware, saleMiddleware)
+	{
+		sales.POST("/", saleHandler.ConfirmSale)
+		sales.GET("/", saleHandler.GetSales)
+		sales.GET("/:id/receipt", saleHandler.GetReceipt)
+	}
+
+	// Cart routes (protected)
+	cart := r.Group("/api/cart")
+	cart.Use(authMiddleware, saleMiddleware)
+	{
+		cart.POST("/", saleHandler.AddToCart)
+		cart.GET("/", saleHandler.GetCart)
+		cart.DELETE("/:item_id", saleHandler.RemoveFromCart)
 	}
 }

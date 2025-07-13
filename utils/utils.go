@@ -3,6 +3,7 @@ package utils
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"reflect"
 	"regexp"
 	"time"
 
@@ -47,18 +48,26 @@ func NewValidator() *validator.Validate {
 	})
 	v.RegisterValidation("barcode", func(fl validator.FieldLevel) bool {
 		barcode := fl.Field().String()
-		// Allow alphanumeric barcodes up to 50 characters
 		return len(barcode) > 0 && len(barcode) <= 50 && regexp.MustCompile(`^[a-zA-Z0-9]+$`).MatchString(barcode)
 	})
 	v.RegisterValidation("future_date", func(fl validator.FieldLevel) bool {
 		date := fl.Field().Interface().(time.Time)
 		return date.After(time.Now())
 	})
+	v.RegisterValidation("gt", func(fl validator.FieldLevel) bool {
+		switch fl.Field().Kind() {
+		case reflect.Int:
+			return fl.Field().Int() > 0
+		case reflect.Float64:
+			return fl.Field().Float() > 0
+		default:
+			return false
+		}
+	})
 	return v
 }
 
 // DebugValidator tests custom validations
 func DebugValidator(v *validator.Validate) error {
-	// Add any validation tests if needed
 	return nil
 }

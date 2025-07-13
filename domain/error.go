@@ -24,4 +24,6 @@ var (
 	ErrInvalidPharmacy     = errors.New("invalid pharmacy")
 	ErrBarcodeTaken        = errors.New("barcode already taken")
 	ErrMedicineHasVariants = errors.New("medicine has variants and cannot be deleted")
+	ErrCartItemNotFound    = errors.New("cart item not found")
+	ErrSaleNotFound        = errors.New("sale not found")
 )
