@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: pharmacy-management-backend
+    env: go
+    plan: free
+    buildCommand: go build -o main ./cmd/api/main.go
+    startCommand: ./main
+    branch: main
+    region: oregon
