@@ -42,7 +42,8 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	// Authenticate user
-	accessToken, refreshToken, err := h.usecase.Login(c.Request.Context(), input.PhoneNumber, input.Password)
+	// accessToken, refreshToken, user, err := h.usecase.Login(c.Request.Context(), input.PhoneNumber, input.Password)
+	accessToken, _, user, err := h.usecase.Login(c.Request.Context(), input.PhoneNumber, input.Password)
 	if err != nil {
 		switch err {
 		case domain.ErrInvalidCredentials:
@@ -54,8 +55,15 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"access_token":  accessToken,
-		"refresh_token": refreshToken,
+		"token": accessToken,
+		"user": gin.H{
+			"id":           user.ID,
+			"phone_number": user.PhoneNumber,
+			"name":         user.FullName,
+			"role":         user.Role,
+			"pharmacy_id":  user.PharmacyID,
+			"picture":      user.ProfilePicture,
+		},
 	})
 }
 

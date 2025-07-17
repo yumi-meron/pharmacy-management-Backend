@@ -17,7 +17,7 @@ import (
 
 // AuthUsecase defines the interface for authentication-related business logic
 type AuthUsecase interface {
-	Login(ctx context.Context, phoneNumber, password string) (string, string, error)
+	Login(ctx context.Context, phoneNumber, password string) (string, string, *domain.User, error)
 	RequestPasswordReset(ctx context.Context, phoneNumber string) error
 	ResetPassword(ctx context.Context, token, newPassword string) error
 	RefreshToken(ctx context.Context, refreshToken string) (string, string, error)
@@ -37,39 +37,39 @@ func NewAuthUsecase(repo repository.AuthRepository, twilio *infrastructure.Twili
 	return &authUsecase{repo, twilio, cfg}
 }
 
-// Login authenticates a user and returns access and refresh tokens
-func (u *authUsecase) Login(ctx context.Context, phoneNumber, password string) (string, string, error) {
+// Login authenticates a user and returns access and refresh tokens along with user data
+func (u *authUsecase) Login(ctx context.Context, phoneNumber, password string) (string, string, *domain.User, error) {
 	user, err := u.repo.GetByPhone(ctx, phoneNumber)
 	if err == domain.ErrNotFound {
-		return "", "", domain.ErrInvalidCredentials
+		return "", "", nil, domain.ErrInvalidCredentials
 	}
 	if err != nil {
-		return "", "", err
+		return "", "", nil, err
 	}
 
 	// Verify password
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
-		return "", "", domain.ErrInvalidCredentials
+		return "", "", nil, domain.ErrInvalidCredentials
 	}
 
 	// Generate access token
 	accessToken, err := u.generateAccessToken(user.ID, user.Role, user.PharmacyID)
 	if err != nil {
-		return "", "", err
+		return "", "", nil, err
 	}
 
 	// Generate refresh token
 	refreshToken, err := u.generateRefreshToken(user.ID)
 	if err != nil {
-		return "", "", err
+		return "", "", nil, err
 	}
 
 	// Save refresh token
 	if err := u.repo.SaveRefreshToken(ctx, user.ID, refreshToken, time.Now().Add(7*24*time.Hour)); err != nil {
-		return "", "", err
+		return "", "", nil, err
 	}
 
-	return accessToken, refreshToken, nil
+	return accessToken, refreshToken, user, nil
 }
 
 // RequestPasswordReset sends a reset token via SMS
