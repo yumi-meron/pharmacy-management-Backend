@@ -15,6 +15,8 @@ type Medicine struct {
 	Picture     string    `json:"picture" validate:"omitempty,url"`
 	CreatedAt   time.Time `json:"created_at" validate:"required"`
 	UpdatedAt   time.Time `json:"updated_at" validate:"required"`
+	Variants    []MedicineVariant `json:"variants" validate:"dive"`
+
 }
 
 // MedicineVariant represents a variant of a medicine

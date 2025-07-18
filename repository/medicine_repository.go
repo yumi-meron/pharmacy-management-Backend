@@ -67,6 +67,12 @@ func (r *medicineRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain
 		r.logger.Info().Str("id", id.String()).Msg("Medicine not found")
 		return nil, domain.ErrMedicineNotFound
 	}
+	m.Variants, err = r.GetVariantsByMedicineID(ctx, id)
+	if err != nil {
+		r.logger.Error().Err(err).Msg("Failed to get medicine variants")
+		return nil, err
+	}
+
 	if err != nil {
 		r.logger.Error().Err(err).Msg("Failed to get medicine by ID")
 		return nil, err
@@ -93,6 +99,11 @@ func (r *medicineRepository) GetAll(ctx context.Context, pharmacyID uuid.UUID) (
 		var m domain.Medicine
 		if err := rows.Scan(&m.ID, &m.PharmacyID, &m.Name, &m.Description, &m.Picture, &m.CreatedAt, &m.UpdatedAt); err != nil {
 			r.logger.Error().Err(err).Msg("Failed to scan medicine")
+			return nil, err
+		}
+		m.Variants, err = r.GetVariantsByMedicineID(ctx, m.ID)
+		if err != nil {
+			r.logger.Error().Err(err).Msg("Failed to get medicine variants")
 			return nil, err
 		}
 		medicines = append(medicines, m)
