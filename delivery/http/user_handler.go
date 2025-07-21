@@ -115,14 +115,12 @@ func (h *UserHandler) ListPharmacists(c *gin.Context) {
 	response := make([]gin.H, len(pharmacists))
 	for i, user := range pharmacists {
 		response[i] = gin.H{
-			"id":              user.ID,
-			"phone_number":    user.PhoneNumber,
-			"full_name":       user.FullName,
-			"role":            user.Role,
-			"pharmacy_id":     user.PharmacyID,
-			"profile_picture": user.ProfilePicture,
-			"created_at":      user.CreatedAt,
-			"updated_at":      user.UpdatedAt,
+			"id":           user.ID,
+			"phone_number": user.PhoneNumber,
+			"name":         user.FullName,
+			"role":         user.Role,
+			"pharmacy_id":  user.PharmacyID,
+			"picture":      user.ProfilePicture,
 		}
 	}
 
