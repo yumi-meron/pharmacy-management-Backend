@@ -1,6 +1,7 @@
 package http
 
 import (
+	"errors"
 	"net/http"
 
 	"pharmacy-management-backend/domain"
@@ -87,4 +88,43 @@ func (h *UserHandler) CreatePharmacist(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"message": "Pharmacist created successfully"})
+}
+
+// ListPharmacists handles GET /api/users/pharmacists
+func (h *UserHandler) ListPharmacists(c *gin.Context) {
+	role, _ := c.Get("role")
+	pharmacyIDStr, _ := c.Get("pharmacy_id")
+	pharmacyID, err := uuid.Parse(pharmacyIDStr.(string))
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, errors.New("invalid pharmacy ID"))
+		return
+	}
+
+	pharmacists, err := h.usecase.ListPharmacists(c.Request.Context(), role.(string), pharmacyID)
+	if err != nil {
+		switch err {
+		case domain.ErrUnauthorized:
+			utils.ErrorResponse(c, http.StatusForbidden, err)
+		default:
+			utils.ErrorResponse(c, http.StatusInternalServerError, err)
+		}
+		return
+	}
+
+	// Format response to exclude password
+	response := make([]gin.H, len(pharmacists))
+	for i, user := range pharmacists {
+		response[i] = gin.H{
+			"id":              user.ID,
+			"phone_number":    user.PhoneNumber,
+			"full_name":       user.FullName,
+			"role":            user.Role,
+			"pharmacy_id":     user.PharmacyID,
+			"profile_picture": user.ProfilePicture,
+			"created_at":      user.CreatedAt,
+			"updated_at":      user.UpdatedAt,
+		}
+	}
+
+	c.JSON(http.StatusOK, response)
 }

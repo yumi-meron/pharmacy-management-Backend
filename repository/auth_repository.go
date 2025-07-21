@@ -23,6 +23,7 @@ type AuthRepository interface {
 	SaveResetToken(ctx context.Context, userID uuid.UUID, token string, expiresAt time.Time) error
 	GetResetToken(ctx context.Context, token string) (*uuid.UUID, error)
 	DeleteResetToken(ctx context.Context, token string) error
+	GetPharmacists(ctx context.Context, pharmacyID *uuid.UUID) ([]domain.User, error)
 }
 
 // authRepository implements AuthRepository
@@ -208,4 +209,42 @@ func (r *authRepository) DeleteResetToken(ctx context.Context, token string) err
 		return err
 	}
 	return nil
+}
+
+// GetPharmacists retrieves all pharmacists, optionally filtered by pharmacy_id
+func (r *authRepository) GetPharmacists(ctx context.Context, pharmacyID *uuid.UUID) ([]domain.User, error) {
+	query := `
+        SELECT id, phone_number, password, full_name, role, pharmacy_id, profile_picture, created_at, updated_at
+        FROM users
+        WHERE role = $1
+    `
+	args := []interface{}{domain.RolePharmacist}
+	if pharmacyID != nil {
+		query += ` AND pharmacy_id = $2`
+		args = append(args, *pharmacyID)
+	}
+	query += ` ORDER BY created_at DESC`
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		r.logger.Error().Err(err).Msg("Failed to get pharmacists")
+		return nil, err
+	}
+	defer rows.Close()
+
+	var pharmacists []domain.User
+	for rows.Next() {
+		var user domain.User
+		err := rows.Scan(
+			&user.ID, &user.PhoneNumber, &user.Password, &user.FullName, &user.Role,
+			&user.PharmacyID, &user.ProfilePicture, &user.CreatedAt, &user.UpdatedAt,
+		)
+		if err != nil {
+			r.logger.Error().Err(err).Msg("Failed to scan pharmacist")
+			return nil, err
+		}
+		pharmacists = append(pharmacists, user)
+	}
+
+	return pharmacists, nil
 }

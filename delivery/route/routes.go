@@ -51,6 +51,7 @@ func SetupRoutes(
 		users.PUT("/me", authHandler.UpdateProfile)
 		users.POST("/owners", adminMiddleware, userHandler.CreateOwner)
 		users.POST("/pharmacists", adminOwnerMiddleware, userHandler.CreatePharmacist)
+		users.GET("/pharmacists", adminOwnerMiddleware, userHandler.ListPharmacists)
 	}
 
 	// Pharmacy routes (protected)

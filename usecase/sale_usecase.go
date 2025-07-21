@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"pharmacy-management-backend/domain"
@@ -58,7 +59,7 @@ func (u *saleUsecase) AddToCart(ctx context.Context, callerRole string, callerUs
 		return err
 	}
 
-	if callerRole != string(domain.RoleAdmin) && callerPharmacyID != medicine.PharmacyID {
+	if callerRole == string(domain.RoleAdmin) || callerPharmacyID != medicine.PharmacyID {
 		return domain.ErrUnauthorized
 	}
 
@@ -74,6 +75,7 @@ func (u *saleUsecase) AddToCart(ctx context.Context, callerRole string, callerUs
 		Quantity:          input.Quantity,
 		CreatedAt:         time.Now(),
 	}
+	fmt.Println("HEy")
 
 	return u.saleRepo.AddToCart(ctx, cart)
 }

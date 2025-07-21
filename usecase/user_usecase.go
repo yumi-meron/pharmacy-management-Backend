@@ -15,6 +15,7 @@ import (
 type UserUsecase interface {
 	CreateOwner(ctx context.Context, callerRole string, callerID uuid.UUID, input domain.CreateUserInput) error
 	CreatePharmacist(ctx context.Context, callerRole string, callerID uuid.UUID, input domain.CreateUserInput) error
+	ListPharmacists(ctx context.Context, callerRole string, callerPharmacyID uuid.UUID) ([]domain.User, error)
 }
 
 // userUsecase implements UserUsecase
@@ -110,4 +111,25 @@ func (u *userUsecase) CreatePharmacist(ctx context.Context, callerRole string, c
 	}
 
 	return u.repo.Create(ctx, user)
+}
+func (u *userUsecase) ListPharmacists(ctx context.Context, callerRole string, callerPharmacyID uuid.UUID) ([]domain.User, error) {
+	if callerRole != string(domain.RoleAdmin) && callerRole != string(domain.RoleOwner) {
+		return nil, domain.ErrUnauthorized
+	}
+
+	var pharmacists []domain.User
+	var err error
+
+	if callerRole == string(domain.RoleAdmin) {
+		// Admins can see all pharmacists
+		pharmacists, err = u.repo.GetPharmacists(ctx, nil)
+	} else {
+		// Owners can only see pharmacists in their pharmacy
+		pharmacists, err = u.repo.GetPharmacists(ctx, &callerPharmacyID)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+	return pharmacists, nil
 }
