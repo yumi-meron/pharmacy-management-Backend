@@ -65,6 +65,14 @@ func (h *UserHandler) CreatePharmacist(c *gin.Context) {
 		return
 	}
 
+	pharmacyIDStr, _ := c.Get("pharmacy_id")
+	pharmacyID, err := uuid.Parse(pharmacyIDStr.(string))
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, errors.New("invalid pharmacy ID"))
+		return
+	}
+	input.PharmacyID = pharmacyID
+
 	// Validate input
 	if err := h.validator.Struct(input); err != nil {
 		utils.ErrorResponse(c, http.StatusBadRequest, err)
