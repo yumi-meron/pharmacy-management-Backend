@@ -33,7 +33,7 @@ type CreateUserInput struct {
 	PhoneNumber    string `json:"phone_number" validate:"required,phone"`
 	Password       string `json:"password" validate:"required,min=8"`
 	FullName       string `json:"full_name" validate:"required"`
-	Role           Role   `json:"role" validate:"required,oneof=owner pharmacist"`
+	Role           Role   `json:"role" validate:"required"`
 	PharmacyID     uuid.UUID
 	ProfilePicture string `json:"profile_picture" validate:"omitempty,url"`
 }
