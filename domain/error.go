@@ -26,4 +26,5 @@ var (
 	ErrMedicineHasVariants = errors.New("medicine has variants and cannot be deleted")
 	ErrCartItemNotFound    = errors.New("cart item not found")
 	ErrSaleNotFound        = errors.New("sale not found")
+	ErrOrderNotFound       = errors.New("order not found")
 )

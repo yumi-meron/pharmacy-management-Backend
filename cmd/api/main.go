@@ -53,6 +53,7 @@ func main() {
 	pharmacyRepo := repository.NewPharmacyRepository(db, logger)
 	medicineRepo := repository.NewMedicineRepository(db, logger)
 	saleRepo := repository.NewSaleRepository(db, logger)
+	orderRepo := repository.NewOrderRepository(db, logger)
 
 	// Initialize use cases
 	authUsecase := usecase.NewAuthUsecase(authRepo, twilioService, cfg)
@@ -60,6 +61,7 @@ func main() {
 	pharmacyUsecase := usecase.NewPharmacyUsecase(pharmacyRepo)
 	medicineUsecase := usecase.NewMedicineUsecase(medicineRepo, pharmacyRepo)
 	saleUsecase := usecase.NewSaleUsecase(saleRepo, medicineRepo)
+	orderUsecase := usecase.NewOrderUsecase(orderRepo)
 
 	// Initialize Gin router
 	router := gin.Default()
@@ -68,7 +70,7 @@ func main() {
 	router.Use(middleware.LoggerMiddleware(logger))
 
 	// Set up routes
-	route.SetupRoutes(router, authUsecase, userUsecase, pharmacyUsecase, medicineUsecase, saleUsecase, cfg, v)
+	route.SetupRoutes(router, authUsecase, userUsecase, pharmacyUsecase, medicineUsecase, saleUsecase, orderUsecase, cfg, v)
 
 	// Start server with graceful shutdown
 	srv := &http.Server{

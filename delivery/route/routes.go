@@ -18,6 +18,7 @@ func SetupRoutes(
 	pharmacyUsecase usecase.PharmacyUsecase,
 	medicineUsecase usecase.MedicineUsecase,
 	saleUsecase usecase.SaleUsecase,
+	orderUsecase usecase.OrderUsecase,
 	cfg *config.Config,
 	validator *validator.Validate,
 ) {
@@ -27,6 +28,7 @@ func SetupRoutes(
 	pharmacyHandler := http.NewPharmacyHandler(pharmacyUsecase, validator)
 	medicineHandler := http.NewMedicineHandler(medicineUsecase, validator)
 	saleHandler := http.NewSaleHandler(saleUsecase, validator)
+	orderHandler := http.NewOrderHandler(orderUsecase, validator)
 
 	// Middleware
 	authMiddleware := middleware.AuthMiddleware(cfg)
@@ -98,5 +100,13 @@ func SetupRoutes(
 		cart.POST("/", saleHandler.AddToCart)
 		cart.GET("/", saleHandler.GetCart)
 		cart.DELETE("/:item_id", saleHandler.RemoveFromCart)
+	}
+
+	// Order routes (protected)
+	orders := r.Group("/api/orders")
+	orders.Use(authMiddleware, middleware.RoleMiddleware("admin", "owner", "pharmacist"))
+	{
+		orders.GET("", orderHandler.ListOrders)
+		orders.GET("/:id", orderHandler.GetOrderDetails)
 	}
 }
