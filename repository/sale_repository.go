@@ -19,7 +19,7 @@ type SaleRepository interface {
 	RemoveFromCart(ctx context.Context, cartID uuid.UUID) error
 	ClearCart(ctx context.Context, userID uuid.UUID) error
 	CreateSale(ctx context.Context, sale domain.Sale, items []domain.SaleItem, receipt domain.Receipt) error
-	GetSales(ctx context.Context, pharmacyID uuid.UUID, limit, offset int) ([]domain.Sale, error)
+	GetSales(ctx context.Context, pharmacyID uuid.UUID, limit, offset int) ([]domain.SaleItem, error)
 	GetSaleByID(ctx context.Context, saleID uuid.UUID) (*domain.Sale, error)
 	GetReceiptBySaleID(ctx context.Context, saleID uuid.UUID) (*domain.Receipt, error)
 }
@@ -81,11 +81,15 @@ func (r *saleRepository) AddToCart(ctx context.Context, cart domain.Cart) error 
 	return nil
 }
 
-// GetCart retrieves cart items for a user
+// GetCart retrieves cart items for a user with medicine details
 func (r *saleRepository) GetCart(ctx context.Context, userID uuid.UUID) ([]domain.Cart, error) {
 	query := `
-        SELECT id, user_id, pharmacy_id, medicine_variant_id, quantity, created_at
-        FROM carts WHERE user_id = $1
+        SELECT c.id, c.user_id, c.pharmacy_id, c.medicine_variant_id, c.quantity, c.created_at,
+               m.name, mv.price_per_unit, mv.unit, m.picture
+        FROM carts c
+        JOIN medicine_variants mv ON c.medicine_variant_id = mv.id
+        JOIN medicines m ON mv.medicine_id = m.id
+        WHERE c.user_id = $1
     `
 	rows, err := r.db.QueryContext(ctx, query, userID)
 	if err != nil {
@@ -97,10 +101,18 @@ func (r *saleRepository) GetCart(ctx context.Context, userID uuid.UUID) ([]domai
 	var carts []domain.Cart
 	for rows.Next() {
 		var c domain.Cart
-		if err := rows.Scan(&c.ID, &c.UserID, &c.PharmacyID, &c.MedicineVariantID, &c.Quantity, &c.CreatedAt); err != nil {
+		var name, unit, picture string
+		var pricePerUnit float64
+		if err := rows.Scan(&c.ID, &c.UserID, &c.PharmacyID, &c.MedicineVariantID, &c.Quantity, &c.CreatedAt,
+			&name, &pricePerUnit, &unit, &picture); err != nil {
 			r.logger.Error().Err(err).Msg("Failed to scan cart item")
 			return nil, err
 		}
+		// Attach additional fields to Cart struct (temporary for response formatting)
+		c.MedicineName = name
+		c.PricePerUnit = pricePerUnit
+		c.Unit = unit
+		c.ImageURL = picture
 		carts = append(carts, c)
 	}
 	return carts, nil
@@ -212,32 +224,42 @@ func (r *saleRepository) CreateSale(ctx context.Context, sale domain.Sale, items
 	return nil
 }
 
-// GetSales retrieves sales for a pharmacy
-func (r *saleRepository) GetSales(ctx context.Context, pharmacyID uuid.UUID, limit, offset int) ([]domain.Sale, error) {
+// GetSales retrieves sale items for a pharmacy with medicine details
+func (r *saleRepository) GetSales(ctx context.Context, pharmacyID uuid.UUID, limit, offset int) ([]domain.SaleItem, error) {
 	query := `
-        SELECT id, user_id, pharmacy_id, total_price, sale_date, created_at, updated_at
-        FROM sales
-        WHERE ($1::uuid IS NULL OR pharmacy_id = $1)
-        ORDER BY sale_date DESC
+        SELECT si.id, si.sale_id, si.medicine_variant_id, si.quantity, si.price_per_unit, si.created_at,
+               m.name, mv.unit, m.picture
+        FROM sale_items si
+        JOIN sales s ON si.sale_id = s.id
+        JOIN medicine_variants mv ON si.medicine_variant_id = mv.id
+        JOIN medicines m ON mv.medicine_id = m.id
+        WHERE ($1::uuid IS NULL OR s.pharmacy_id = $1)
+        ORDER BY si.created_at DESC
         LIMIT $2 OFFSET $3
     `
 	rows, err := r.db.QueryContext(ctx, query, pharmacyID, limit, offset)
 	if err != nil {
-		r.logger.Error().Err(err).Msg("Failed to get sales")
+		r.logger.Error().Err(err).Msg("Failed to get sale items")
 		return nil, err
 	}
 	defer rows.Close()
 
-	var sales []domain.Sale
+	var saleItems []domain.SaleItem
 	for rows.Next() {
-		var s domain.Sale
-		if err := rows.Scan(&s.ID, &s.UserID, &s.PharmacyID, &s.TotalPrice, &s.SaleDate, &s.CreatedAt, &s.UpdatedAt); err != nil {
-			r.logger.Error().Err(err).Msg("Failed to scan sale")
+		var si domain.SaleItem
+		var name, unit, picture string
+		if err := rows.Scan(&si.ID, &si.SaleID, &si.MedicineVariantID, &si.Quantity, &si.PricePerUnit, &si.CreatedAt,
+			&name, &unit, &picture); err != nil {
+			r.logger.Error().Err(err).Msg("Failed to scan sale item")
 			return nil, err
 		}
-		sales = append(sales, s)
+		// Attach additional fields to SaleItem struct (temporary for response formatting)
+		si.MedicineName = name
+		si.Unit = unit
+		si.ImageURL = picture
+		saleItems = append(saleItems, si)
 	}
-	return sales, nil
+	return saleItems, nil
 }
 
 // GetSaleByID retrieves a sale by ID
@@ -266,14 +288,20 @@ func (r *saleRepository) GetReceiptBySaleID(ctx context.Context, saleID uuid.UUI
         FROM receipts WHERE sale_id = $1
     `
 	var receipt domain.Receipt
-	var content string
-	err := r.db.QueryRowContext(ctx, query, saleID).Scan(&receipt.ID, &receipt.SaleID, &content, &receipt.CreatedAt)
+	var contentJSON string
+	err := r.db.QueryRowContext(ctx, query, saleID).Scan(&receipt.ID, &receipt.SaleID, &contentJSON, &receipt.CreatedAt)
 	if err == sql.ErrNoRows {
 		r.logger.Info().Str("sale_id", saleID.String()).Msg("Receipt not found")
 		return nil, domain.ErrSaleNotFound
 	}
 	if err != nil {
 		r.logger.Error().Err(err).Msg("Failed to get receipt by sale ID")
+		return nil, err
+	}
+
+	var content domain.ReceiptContent
+	if err := json.Unmarshal([]byte(contentJSON), &content); err != nil {
+		r.logger.Error().Err(err).Msg("Failed to unmarshal receipt content")
 		return nil, err
 	}
 	receipt.Content = content

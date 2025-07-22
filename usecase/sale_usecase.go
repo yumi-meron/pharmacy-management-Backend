@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -17,11 +16,11 @@ import (
 type SaleUsecase interface {
 	SearchMedicines(ctx context.Context, callerRole string, callerPharmacyID uuid.UUID, query string) ([]domain.MedicineVariant, error)
 	AddToCart(ctx context.Context, callerRole string, callerUserID, callerPharmacyID uuid.UUID, input domain.CreateCartInput) error
-	GetCart(ctx context.Context, callerRole string, callerUserID, callerPharmacyID uuid.UUID) ([]domain.Cart, error)
 	RemoveFromCart(ctx context.Context, callerRole string, callerUserID, callerPharmacyID, cartID uuid.UUID) error
 	ConfirmSale(ctx context.Context, callerRole string, callerUserID, callerPharmacyID uuid.UUID) (*domain.Sale, error)
-	GetSales(ctx context.Context, callerRole string, callerPharmacyID uuid.UUID, limit, offset int) ([]domain.Sale, error)
+	GetSales(ctx context.Context, callerRole string, callerPharmacyID uuid.UUID, limit, offset int) ([]domain.SaleResponse, error)
 	GetReceipt(ctx context.Context, callerRole string, callerPharmacyID, saleID uuid.UUID) (*domain.Receipt, error)
+	GetCart(ctx context.Context, callerRole string, callerUserID uuid.UUID, callerPharmacyID uuid.UUID) ([]domain.CartResponse, error)
 }
 
 // saleUsecase implements SaleUsecase
@@ -81,11 +80,42 @@ func (u *saleUsecase) AddToCart(ctx context.Context, callerRole string, callerUs
 }
 
 // GetCart retrieves the user's cart
-func (u *saleUsecase) GetCart(ctx context.Context, callerRole string, callerUserID, callerPharmacyID uuid.UUID) ([]domain.Cart, error) {
+func (u *saleUsecase) GetCart(ctx context.Context, callerRole string, callerUserID uuid.UUID, callerPharmacyID uuid.UUID) ([]domain.CartResponse, error) {
 	if callerRole != string(domain.RoleOwner) && callerRole != string(domain.RolePharmacist) {
 		return nil, domain.ErrUnauthorized
 	}
-	return u.saleRepo.GetCart(ctx, callerUserID)
+	carts, err := u.saleRepo.GetCart(ctx, callerUserID)
+	if err != nil {
+		return nil, err
+	}
+
+	var response []domain.CartResponse
+	for _, cart := range carts {
+		if cart.PharmacyID != callerPharmacyID {
+			return nil, domain.ErrUnauthorized
+		}
+
+		variant, err := u.medicineRepo.GetVariantByID(ctx, cart.MedicineVariantID)
+		if err != nil {
+			return nil, err
+		}
+
+		medicine, err := u.medicineRepo.GetByID(ctx, variant.MedicineID)
+		if err != nil {
+			return nil, err
+		}
+
+		response = append(response, domain.CartResponse{
+			ID:           cart.ID,
+			Medicine:     medicine.Name,
+			PricePerUnit: variant.PricePerUnit,
+			Unit:         variant.Unit,
+			ImageURL:     medicine.Picture,
+			Quantity:     cart.Quantity,
+			CreatedAt:    cart.CreatedAt,
+		})
+	}
+	return response, nil
 }
 
 // RemoveFromCart removes an item from the cart
@@ -123,11 +153,7 @@ func (u *saleUsecase) ConfirmSale(ctx context.Context, callerRole string, caller
 
 	var saleItems []domain.SaleItem
 	var totalPrice float64
-	receiptContent := map[string]interface{}{
-		"items":       []map[string]interface{}{},
-		"pharmacy_id": callerPharmacyID.String(),
-		"sale_date":   time.Now().Format(time.RFC3339),
-	}
+	var receiptItems []domain.ReceiptItem
 
 	for _, cartItem := range cartItems {
 		if cartItem.PharmacyID != callerPharmacyID {
@@ -143,6 +169,20 @@ func (u *saleUsecase) ConfirmSale(ctx context.Context, callerRole string, caller
 			return nil, domain.ErrInsufficientStock
 		}
 
+		medicine, err := u.medicineRepo.GetByID(ctx, variant.MedicineID)
+		if err != nil {
+			return nil, err
+		}
+
+		receiptItem := domain.ReceiptItem{
+			Brand:        variant.Brand,
+			MedicineName: medicine.Name,
+			PricePerUnit: variant.PricePerUnit,
+			Quantity:     cartItem.Quantity,
+			Subtotal:     float64(cartItem.Quantity) * variant.PricePerUnit,
+		}
+		receiptItems = append(receiptItems, receiptItem)
+
 		saleItem := domain.SaleItem{
 			ID:                uuid.New(),
 			SaleID:            uuid.New(), // Will be updated after sale creation
@@ -152,20 +192,7 @@ func (u *saleUsecase) ConfirmSale(ctx context.Context, callerRole string, caller
 			CreatedAt:         time.Now(),
 		}
 		saleItems = append(saleItems, saleItem)
-		totalPrice += float64(cartItem.Quantity) * variant.PricePerUnit
-
-		// Add to receipt content
-		medicine, err := u.medicineRepo.GetByID(ctx, variant.MedicineID)
-		if err != nil {
-			return nil, err
-		}
-		receiptContent["items"] = append(receiptContent["items"].([]map[string]interface{}), map[string]interface{}{
-			"medicine_name":  medicine.Name,
-			"brand":          variant.Brand,
-			"quantity":       cartItem.Quantity,
-			"price_per_unit": variant.PricePerUnit,
-			"subtotal":       float64(cartItem.Quantity) * variant.PricePerUnit,
-		})
+		totalPrice += receiptItem.Subtotal
 	}
 
 	sale := domain.Sale{
@@ -178,16 +205,17 @@ func (u *saleUsecase) ConfirmSale(ctx context.Context, callerRole string, caller
 		UpdatedAt:  time.Now(),
 	}
 
-	receiptContent["total_price"] = totalPrice
-	content, err := json.Marshal(receiptContent)
-	if err != nil {
-		return nil, err
+	receiptContent := domain.ReceiptContent{
+		Items:      receiptItems,
+		PharmacyID: callerPharmacyID,
+		SaleDate:   sale.SaleDate,
+		TotalPrice: totalPrice,
 	}
 
 	receipt := domain.Receipt{
 		ID:        uuid.New(),
 		SaleID:    sale.ID,
-		Content:   string(content),
+		Content:   receiptContent,
 		CreatedAt: time.Now(),
 	}
 
@@ -208,7 +236,7 @@ func (u *saleUsecase) ConfirmSale(ctx context.Context, callerRole string, caller
 }
 
 // GetSales retrieves sales with pagination
-func (u *saleUsecase) GetSales(ctx context.Context, callerRole string, callerPharmacyID uuid.UUID, limit, offset int) ([]domain.Sale, error) {
+func (u *saleUsecase) GetSales(ctx context.Context, callerRole string, callerPharmacyID uuid.UUID, limit, offset int) ([]domain.SaleResponse, error) {
 	if callerRole != string(domain.RoleAdmin) && callerRole != string(domain.RoleOwner) && callerRole != string(domain.RolePharmacist) {
 		return nil, domain.ErrUnauthorized
 	}
@@ -216,7 +244,34 @@ func (u *saleUsecase) GetSales(ctx context.Context, callerRole string, callerPha
 	if callerRole != string(domain.RoleAdmin) {
 		pharmacyID = callerPharmacyID
 	}
-	return u.saleRepo.GetSales(ctx, pharmacyID, limit, offset)
+	saleItems, err := u.saleRepo.GetSales(ctx, pharmacyID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+
+	var response []domain.SaleResponse
+	for _, item := range saleItems {
+		variant, err := u.medicineRepo.GetVariantByID(ctx, item.MedicineVariantID)
+		if err != nil {
+			return nil, err
+		}
+
+		medicine, err := u.medicineRepo.GetByID(ctx, variant.MedicineID)
+		if err != nil {
+			return nil, err
+		}
+
+		response = append(response, domain.SaleResponse{
+			ID:           item.ID,
+			Medicine:     medicine.Name,
+			PricePerUnit: item.PricePerUnit,
+			Unit:         variant.Unit,
+			ImageURL:     medicine.Picture,
+			Quantity:     item.Quantity,
+			CreatedAt:    item.CreatedAt,
+		})
+	}
+	return response, nil
 }
 
 // GetReceipt retrieves a receipt by sale ID

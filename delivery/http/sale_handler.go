@@ -86,9 +86,17 @@ func (h *SaleHandler) AddToCart(c *gin.Context) {
 func (h *SaleHandler) GetCart(c *gin.Context) {
 	role, _ := c.Get("role")
 	userIDStr, _ := c.Get("user_id")
-	userID, _ := uuid.Parse(userIDStr.(string))
+	userID, err := uuid.Parse(userIDStr.(string))
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, errors.New("invalid user ID"))
+		return
+	}
 	pharmacyIDStr, _ := c.Get("pharmacy_id")
-	pharmacyID, _ := uuid.Parse(pharmacyIDStr.(string))
+	pharmacyID, err := uuid.Parse(pharmacyIDStr.(string))
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, errors.New("invalid pharmacy ID"))
+		return
+	}
 
 	cart, err := h.usecase.GetCart(c.Request.Context(), role.(string), userID, pharmacyID)
 	if err != nil {
@@ -178,7 +186,11 @@ func (h *SaleHandler) GetSales(c *gin.Context) {
 
 	role, _ := c.Get("role")
 	pharmacyIDStr, _ := c.Get("pharmacy_id")
-	pharmacyID, _ := uuid.Parse(pharmacyIDStr.(string))
+	pharmacyID, err := uuid.Parse(pharmacyIDStr.(string))
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, errors.New("invalid pharmacy ID"))
+		return
+	}
 
 	sales, err := h.usecase.GetSales(c.Request.Context(), role.(string), pharmacyID, limit, offset)
 	if err != nil {
@@ -220,5 +232,16 @@ func (h *SaleHandler) GetReceipt(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, receipt)
+	// Map the Receipt data to the flattened ReceiptResponse struct
+	response := domain.ReceiptResponse{
+		ID:         receipt.ID,
+		SaleID:     receipt.SaleID,
+		Items:      receipt.Content.Items,
+		PharmacyID: receipt.Content.PharmacyID,
+		SaleDate:   receipt.Content.SaleDate,
+		TotalPrice: receipt.Content.TotalPrice,
+		CreatedAt:  receipt.CreatedAt,
+	}
+
+	c.JSON(http.StatusOK, response)
 }

@@ -66,9 +66,8 @@ func (u *medicineUsecase) Create(ctx context.Context, callerRole string, callerP
 
 // GetAll retrieves medicines based on role
 func (u *medicineUsecase) GetAll(ctx context.Context, callerRole string, callerPharmacyID uuid.UUID) ([]domain.Medicine, error) {
-	var pharmacyID uuid.UUID
+	pharmacyID := callerPharmacyID
 	// if callerRole != string(domain.RoleAdmin) {
-	pharmacyID = callerPharmacyID
 	// }
 	return u.repo.GetAll(ctx, pharmacyID)
 }
