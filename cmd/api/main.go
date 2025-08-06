@@ -5,8 +5,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"time"
-
 	"pharmacy-management-backend/config"
 	"pharmacy-management-backend/delivery/route"
 	"pharmacy-management-backend/infrastructure"
@@ -14,9 +12,9 @@ import (
 	"pharmacy-management-backend/repository"
 	"pharmacy-management-backend/usecase"
 	"pharmacy-management-backend/utils"
+	"time"
 
 	"github.com/gin-gonic/gin"
-	_ "github.com/lib/pq"
 	"github.com/rs/zerolog"
 )
 
@@ -39,7 +37,7 @@ func main() {
 	defer db.Close()
 
 	// Initialize Twilio service
-	twilioService := infrastructure.NewTwilioService(cfg, logger)
+	smsService := infrastructure.NewTwilioService(cfg, logger)
 
 	// Initialize validator
 	v := utils.NewValidator()
@@ -56,12 +54,17 @@ func main() {
 	orderRepo := repository.NewOrderRepository(db, logger)
 
 	// Initialize use cases
+	// Type assertion to convert smsService (domain.SMSService) to *infrastructure.TwilioService
+	twilioService, ok := smsService.(*infrastructure.TwilioService)
+	if !ok {
+		logger.Fatal().Msg("Failed to assert smsService to *infrastructure.TwilioService")
+	}
 	authUsecase := usecase.NewAuthUsecase(authRepo, twilioService, cfg)
 	userUsecase := usecase.NewUserUsecase(authRepo)
 	pharmacyUsecase := usecase.NewPharmacyUsecase(pharmacyRepo)
 	medicineUsecase := usecase.NewMedicineUsecase(medicineRepo, pharmacyRepo)
 	saleUsecase := usecase.NewSaleUsecase(saleRepo, medicineRepo)
-	orderUsecase := usecase.NewOrderUsecase(orderRepo)
+	orderUsecase := usecase.NewOrderUsecase(orderRepo, smsService, logger)
 
 	// Initialize Gin router
 	router := gin.Default()

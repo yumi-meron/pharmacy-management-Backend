@@ -108,5 +108,8 @@ func SetupRoutes(
 	{
 		orders.GET("", orderHandler.ListOrders)
 		orders.GET("/:id", orderHandler.GetOrderDetails)
+		orders.POST("", orderHandler.CreateOrder)
+		orders.POST("/:id/request-otp", orderHandler.RequestOTP)
+		orders.POST("/:id/verify", orderHandler.VerifyOrder)
 	}
 }

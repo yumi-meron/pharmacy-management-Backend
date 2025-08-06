@@ -5,6 +5,7 @@ import (
 
 	"pharmacy-management-backend/config"
 
+	_ "github.com/lib/pq"
 	"github.com/rs/zerolog"
 )
 

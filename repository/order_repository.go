@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"pharmacy-management-backend/domain"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
@@ -13,6 +14,10 @@ import (
 type OrderRepository interface {
 	ListOrders(ctx context.Context, pharmacyID uuid.UUID, limit, offset int) ([]domain.OrderResponse, error)
 	GetOrderDetails(ctx context.Context, orderID uuid.UUID) (*domain.Order, []domain.OrderItem, *domain.Patient, error)
+	GetPatientByID(ctx context.Context, patientID uuid.UUID) (*domain.Patient, error)
+	CreateOrder(ctx context.Context, order *domain.Order, items []domain.OrderItem) error
+	RequestOTP(ctx context.Context, otp *domain.OrderOTP) error
+	VerifyOrder(ctx context.Context, orderID uuid.UUID, otp string) (bool, error)
 }
 
 // orderRepository implements OrderRepository
@@ -29,7 +34,7 @@ func NewOrderRepository(db *sql.DB, logger zerolog.Logger) OrderRepository {
 // ListOrders retrieves orders for a pharmacy with hospital and patient names
 func (r *orderRepository) ListOrders(ctx context.Context, pharmacyID uuid.UUID, limit, offset int) ([]domain.OrderResponse, error) {
 	query := `
-        SELECT o.id, h.name, p.full_name, o.order_date
+        SELECT o.id, h.name, p.full_name, o.order_date, o.status
         FROM orders o
         JOIN hospitals h ON o.hospital_id = h.id
         JOIN patients p ON o.patient_id = p.id
@@ -47,7 +52,7 @@ func (r *orderRepository) ListOrders(ctx context.Context, pharmacyID uuid.UUID, 
 	var orders []domain.OrderResponse
 	for rows.Next() {
 		var order domain.OrderResponse
-		if err := rows.Scan(&order.ID, &order.HospitalName, &order.PatientName, &order.OrderDate); err != nil {
+		if err := rows.Scan(&order.ID, &order.HospitalName, &order.PatientName, &order.OrderDate, &order.Status); err != nil {
 			r.logger.Error().Err(err).Msg("Failed to scan order")
 			return nil, err
 		}
@@ -58,15 +63,14 @@ func (r *orderRepository) ListOrders(ctx context.Context, pharmacyID uuid.UUID, 
 
 // GetOrderDetails retrieves order details including patient and items
 func (r *orderRepository) GetOrderDetails(ctx context.Context, orderID uuid.UUID) (*domain.Order, []domain.OrderItem, *domain.Patient, error) {
-	// Get order
 	query := `
-        SELECT o.id, o.hospital_id, o.patient_id, o.pharmacy_id, o.order_date, o.created_at, o.updated_at
+        SELECT o.id, o.hospital_id, o.patient_id, o.pharmacy_id, o.order_date, o.status, o.created_at, o.updated_at
         FROM orders o
         WHERE o.id = $1
     `
 	var order domain.Order
 	err := r.db.QueryRowContext(ctx, query, orderID).Scan(
-		&order.ID, &order.HospitalID, &order.PatientID, &order.PharmacyID, &order.OrderDate, &order.CreatedAt, &order.UpdatedAt,
+		&order.ID, &order.HospitalID, &order.PatientID, &order.PharmacyID, &order.OrderDate, &order.Status, &order.CreatedAt, &order.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		r.logger.Info().Str("order_id", orderID.String()).Msg("Order not found")
@@ -77,7 +81,6 @@ func (r *orderRepository) GetOrderDetails(ctx context.Context, orderID uuid.UUID
 		return nil, nil, nil, err
 	}
 
-	// Get patient
 	patientQuery := `
         SELECT id, full_name, phone_number, emergency_phone_number, created_at, updated_at
         FROM patients
@@ -92,7 +95,6 @@ func (r *orderRepository) GetOrderDetails(ctx context.Context, orderID uuid.UUID
 		return nil, nil, nil, err
 	}
 
-	// Get order items with medicine details
 	itemsQuery := `
         SELECT oi.id, oi.order_id, oi.medicine_variant_id, oi.quantity, oi.price_per_unit, oi.created_at,
                m.name, mv.unit
@@ -125,4 +127,131 @@ func (r *orderRepository) GetOrderDetails(ctx context.Context, orderID uuid.UUID
 	}
 
 	return &order, items, &patient, nil
+}
+
+// GetPatientByID retrieves patient details by ID
+func (r *orderRepository) GetPatientByID(ctx context.Context, patientID uuid.UUID) (*domain.Patient, error) {
+	query := `
+        SELECT id, full_name, phone_number, emergency_phone_number, created_at, updated_at
+        FROM patients
+        WHERE id = $1
+    `
+	var patient domain.Patient
+	err := r.db.QueryRowContext(ctx, query, patientID).Scan(
+		&patient.ID, &patient.FullName, &patient.PhoneNumber, &patient.EmergencyPhoneNumber, &patient.CreatedAt, &patient.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, domain.ErrPatientNotFound
+	}
+	if err != nil {
+		r.logger.Error().Err(err).Msg("Failed to get patient")
+		return nil, err
+	}
+	return &patient, nil
+}
+
+// CreateOrder creates a new order with items
+func (r *orderRepository) CreateOrder(ctx context.Context, order *domain.Order, items []domain.OrderItem) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		r.logger.Error().Err(err).Msg("Failed to begin transaction")
+		return err
+	}
+	defer tx.Rollback()
+
+	query := `
+        INSERT INTO orders (id, hospital_id, patient_id, pharmacy_id, order_date, status, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `
+	_, err = tx.ExecContext(ctx, query,
+		order.ID, order.HospitalID, order.PatientID, order.PharmacyID, order.OrderDate, order.Status, order.CreatedAt, order.UpdatedAt,
+	)
+	if err != nil {
+		r.logger.Error().Err(err).Msg("Failed to insert order")
+		return err
+	}
+
+	for _, item := range items {
+		itemQuery := `
+            INSERT INTO order_items (id, order_id, medicine_variant_id, quantity, price_per_unit, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6)
+        `
+		_, err = tx.ExecContext(ctx, itemQuery,
+			uuid.New(), order.ID, item.MedicineVariantID, item.Quantity, item.PricePerUnit, item.CreatedAt,
+		)
+		if err != nil {
+			r.logger.Error().Err(err).Msg("Failed to insert order item")
+			return err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		r.logger.Error().Err(err).Msg("Failed to commit transaction")
+		return err
+	}
+	return nil
+}
+
+// RequestOTP stores a new OTP for an order
+func (r *orderRepository) RequestOTP(ctx context.Context, otp *domain.OrderOTP) error {
+	query := `
+        INSERT INTO order_otps (order_id, otp, phone_number, expires_at, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT (order_id) DO UPDATE
+        SET otp = EXCLUDED.otp, phone_number = EXCLUDED.phone_number, expires_at = EXCLUDED.expires_at, updated_at = EXCLUDED.updated_at
+    `
+	_, err := r.db.ExecContext(ctx, query,
+		otp.OrderID, otp.OTP, otp.PhoneNumber, otp.ExpiresAt, otp.CreatedAt, otp.UpdatedAt,
+	)
+	if err != nil {
+		r.logger.Error().Err(err).Msg("Failed to insert or update order OTP")
+		return err
+	}
+	return nil
+}
+
+// VerifyOrder verifies the OTP for an order and updates status
+func (r *orderRepository) VerifyOrder(ctx context.Context, orderID uuid.UUID, otp string) (bool, error) {
+	query := `
+        SELECT o.status, oo.otp, oo.expires_at
+        FROM orders o
+        LEFT JOIN order_otps oo ON o.id = oo.order_id
+        WHERE o.id = $1
+    `
+	var status, storedOTP string
+	var expiresAt sql.NullTime
+	err := r.db.QueryRowContext(ctx, query, orderID).Scan(&status, &storedOTP, &expiresAt)
+	if err == sql.ErrNoRows {
+		r.logger.Info().Str("order_id", orderID.String()).Msg("Order not found")
+		return false, domain.ErrOrderNotFound
+	}
+	if err != nil {
+		r.logger.Error().Err(err).Msg("Failed to get order OTP")
+		return false, err
+	}
+	if status == "confirmed" {
+		return false, domain.ErrOrderAlreadyConfirmed
+	}
+	if !expiresAt.Valid || time.Now().After(expiresAt.Time) || storedOTP != otp {
+		return false, nil
+	}
+	updateQuery := `
+        UPDATE orders
+        SET status = 'confirmed', updated_at = $2
+        WHERE id = $1 AND status = 'pending'
+    `
+	result, err := r.db.ExecContext(ctx, updateQuery, orderID, time.Now())
+	if err != nil {
+		r.logger.Error().Err(err).Msg("Failed to update order status")
+		return false, err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		r.logger.Error().Err(err).Msg("Failed to check rows affected")
+		return false, err
+	}
+	if rowsAffected == 0 {
+		return false, nil
+	}
+	return true, nil
 }

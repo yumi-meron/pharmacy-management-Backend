@@ -94,3 +94,120 @@ func (h *OrderHandler) GetOrderDetails(c *gin.Context) {
 
 	c.JSON(http.StatusOK, details)
 }
+
+// CreateOrder handles POST /api/orders
+func (h *OrderHandler) CreateOrder(c *gin.Context) {
+	var req domain.CreateOrderRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, err)
+		return
+	}
+	if err := h.validator.Struct(req); err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, err)
+		return
+	}
+	role, _ := c.Get("role")
+	pharmacyIDStr, _ := c.Get("pharmacy_id")
+	pharmacyID, err := uuid.Parse(pharmacyIDStr.(string))
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, errors.New("invalid pharmacy ID"))
+		return
+	}
+	order, err := h.usecase.CreateOrder(c.Request.Context(), role.(string), pharmacyID, req)
+	if err != nil {
+		switch err {
+		case domain.ErrUnauthorized:
+			utils.ErrorResponse(c, http.StatusForbidden, err)
+		case domain.ErrPatientNotFound:
+			utils.ErrorResponse(c, http.StatusNotFound, err)
+		default:
+			utils.ErrorResponse(c, http.StatusInternalServerError, err)
+		}
+		return
+	}
+	c.JSON(http.StatusCreated, order)
+}
+
+// RequestOTP handles POST /api/orders/:id/request-otp
+func (h *OrderHandler) RequestOTP(c *gin.Context) {
+	orderIDStr := c.Param("id")
+	orderID, err := uuid.Parse(orderIDStr)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, errors.New("invalid order ID"))
+		return
+	}
+	var req domain.RequestOTPRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, err)
+		return
+	}
+	if err := h.validator.Struct(req); err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, err)
+		return
+	}
+	role, _ := c.Get("role")
+	pharmacyIDStr, _ := c.Get("pharmacy_id")
+	pharmacyID, err := uuid.Parse(pharmacyIDStr.(string))
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, errors.New("invalid pharmacy ID"))
+		return
+	}
+	err = h.usecase.RequestOTP(c.Request.Context(), role.(string), pharmacyID, orderID, req)
+	if err != nil {
+		switch err {
+		case domain.ErrUnauthorized:
+			utils.ErrorResponse(c, http.StatusForbidden, err)
+		case domain.ErrOrderNotFound:
+			utils.ErrorResponse(c, http.StatusNotFound, err)
+		case domain.ErrInvalidPhone:
+			utils.ErrorResponse(c, http.StatusBadRequest, err)
+		default:
+			utils.ErrorResponse(c, http.StatusInternalServerError, err)
+		}
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "OTP sent"})
+}
+
+// VerifyOrder handles POST /api/orders/:id/verify
+func (h *OrderHandler) VerifyOrder(c *gin.Context) {
+	orderIDStr := c.Param("id")
+	orderID, err := uuid.Parse(orderIDStr)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, errors.New("invalid order ID"))
+		return
+	}
+	var req struct {
+		OTP string `json:"otp" validate:"required,len=6"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, err)
+		return
+	}
+	if err := h.validator.Struct(req); err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, err)
+		return
+	}
+	role, _ := c.Get("role")
+	pharmacyIDStr, _ := c.Get("pharmacy_id")
+	pharmacyID, err := uuid.Parse(pharmacyIDStr.(string))
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, errors.New("invalid pharmacy ID"))
+		return
+	}
+	err = h.usecase.VerifyOrder(c.Request.Context(), role.(string), pharmacyID, orderID, req.OTP)
+	if err != nil {
+		switch err {
+		case domain.ErrUnauthorized:
+			utils.ErrorResponse(c, http.StatusForbidden, err)
+		case domain.ErrOrderNotFound:
+			utils.ErrorResponse(c, http.StatusNotFound, err)
+		case domain.ErrInvalidOTP, domain.ErrOrderAlreadyConfirmed:
+			utils.ErrorResponse(c, http.StatusBadRequest, err)
+		default:
+			utils.ErrorResponse(c, http.StatusInternalServerError, err)
+		}
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Order confirmed"})
+}
