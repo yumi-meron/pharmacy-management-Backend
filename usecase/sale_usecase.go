@@ -20,7 +20,7 @@ type SaleUsecase interface {
 	ConfirmSale(ctx context.Context, callerRole string, callerUserID, callerPharmacyID uuid.UUID) (*domain.Sale, error)
 	GetSales(ctx context.Context, callerRole string, callerPharmacyID uuid.UUID, limit, offset int) ([]domain.SaleResponse, error)
 	GetReceipt(ctx context.Context, callerRole string, callerPharmacyID, saleID uuid.UUID) (*domain.Receipt, error)
-	GetCart(ctx context.Context, callerRole string, callerUserID uuid.UUID, callerPharmacyID uuid.UUID) ([]domain.CartResponse, error)
+	GetCart(ctx context.Context, callerRole string, callerUserID uuid.UUID, callerPharmacyID uuid.UUID) (*domain.CartResponseSummary, error)
 }
 
 // saleUsecase implements SaleUsecase
@@ -80,7 +80,7 @@ func (u *saleUsecase) AddToCart(ctx context.Context, callerRole string, callerUs
 }
 
 // GetCart retrieves the user's cart
-func (u *saleUsecase) GetCart(ctx context.Context, callerRole string, callerUserID uuid.UUID, callerPharmacyID uuid.UUID) ([]domain.CartResponse, error) {
+func (u *saleUsecase) GetCart(ctx context.Context, callerRole string, callerUserID uuid.UUID, callerPharmacyID uuid.UUID) (*domain.CartResponseSummary, error) {
 	if callerRole != string(domain.RoleOwner) && callerRole != string(domain.RolePharmacist) {
 		return nil, domain.ErrUnauthorized
 	}
@@ -89,7 +89,9 @@ func (u *saleUsecase) GetCart(ctx context.Context, callerRole string, callerUser
 		return nil, err
 	}
 
-	var response []domain.CartResponse
+	var items []domain.CartItemSummary
+	var totalPrice float64
+
 	for _, cart := range carts {
 		if cart.PharmacyID != callerPharmacyID {
 			return nil, domain.ErrUnauthorized
@@ -105,17 +107,22 @@ func (u *saleUsecase) GetCart(ctx context.Context, callerRole string, callerUser
 			return nil, err
 		}
 
-		response = append(response, domain.CartResponse{
-			ID:           cart.ID,
-			Medicine:     medicine.Name,
-			PricePerUnit: variant.PricePerUnit,
-			Unit:         variant.Unit,
-			ImageURL:     medicine.Picture,
-			Quantity:     cart.Quantity,
-			CreatedAt:    cart.CreatedAt,
+		itemPrice := float64(cart.Quantity) * variant.PricePerUnit
+		totalPrice += itemPrice
+
+		items = append(items, domain.CartItemSummary{
+			MedicineVariantID: cart.MedicineVariantID,
+			MedicineName:      medicine.Name,
+			Price:             itemPrice,
+			Unit:              variant.Unit,
+			Image_url:         medicine.Picture,
 		})
 	}
-	return response, nil
+
+	return &domain.CartResponseSummary{
+		Items:      items,
+		TotalPrice: totalPrice,
+	}, nil
 }
 
 // RemoveFromCart removes an item from the cart

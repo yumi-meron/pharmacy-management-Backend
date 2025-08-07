@@ -38,6 +38,19 @@ type CartResponse struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
+type CartItemSummary struct {
+	MedicineVariantID uuid.UUID `json:"medicine_variant_id"`
+	MedicineName      string    `json:"medicine_name"`
+	Price             float64   `json:"price"`
+	Unit              string    `json:"unit"`
+	Image_url         string    `json:"image_url,omitempty"`
+}
+
+type CartResponseSummary struct {
+	Items      []CartItemSummary `json:"items"`
+	TotalPrice float64           `json:"total_price"`
+}
+
 // SaleItem represents an item in a sale
 type SaleItem struct {
 	ID                uuid.UUID `json:"id" validate:"required"`
