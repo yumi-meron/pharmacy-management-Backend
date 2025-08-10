@@ -39,6 +39,7 @@ type CartResponse struct {
 }
 
 type CartItemSummary struct {
+	ID           uuid.UUID `json:"id"`
 	MedicineVariantID uuid.UUID `json:"medicine_variant_id"`
 	MedicineName      string    `json:"medicine_name"`
 	Price             float64   `json:"price"`

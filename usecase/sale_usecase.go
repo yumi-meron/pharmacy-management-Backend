@@ -111,6 +111,7 @@ func (u *saleUsecase) GetCart(ctx context.Context, callerRole string, callerUser
 		totalPrice += itemPrice
 
 		items = append(items, domain.CartItemSummary{
+			ID: cart.ID,
 			MedicineVariantID: cart.MedicineVariantID,
 			MedicineName:      medicine.Name,
 			Price:             itemPrice,
