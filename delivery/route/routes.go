@@ -60,8 +60,8 @@ func SetupRoutes(
 	pharmacies := r.Group("/api/pharmacies")
 	pharmacies.Use(authMiddleware)
 	{
-		pharmacies.POST("/", adminMiddleware, pharmacyHandler.Create)
-		pharmacies.GET("/", pharmacyHandler.GetAll)
+		pharmacies.POST("", adminMiddleware, pharmacyHandler.Create)
+		pharmacies.GET("", pharmacyHandler.GetAll)
 		pharmacies.GET("/:id", pharmacyHandler.GetByID)
 		pharmacies.PUT("/:id", adminOwnerMiddleware, pharmacyHandler.Update)
 		pharmacies.DELETE("/:id", adminMiddleware, pharmacyHandler.Delete)
@@ -71,8 +71,8 @@ func SetupRoutes(
 	medicines := r.Group("/api/medicines")
 	medicines.Use(authMiddleware)
 	{
-		medicines.POST("/", adminOwnerMiddleware, medicineHandler.Create)
-		medicines.GET("/", medicineHandler.GetAll)
+		medicines.POST("", adminOwnerMiddleware, medicineHandler.Create)
+		medicines.GET("", medicineHandler.GetAll)
 		medicines.GET("/search", saleMiddleware, saleHandler.SearchMedicines)
 		medicines.GET("/:id", medicineHandler.GetByID)
 		medicines.PUT("/:id", adminOwnerMiddleware, medicineHandler.Update)
