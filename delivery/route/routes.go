@@ -88,8 +88,8 @@ func SetupRoutes(
 	sales := r.Group("/api/sales")
 	sales.Use(authMiddleware, saleMiddleware)
 	{
-		sales.POST("/", saleHandler.ConfirmSale)
-		sales.GET("/", saleHandler.GetSales)
+		sales.POST("", saleHandler.ConfirmSale)
+		sales.GET("", saleHandler.GetSales)
 		sales.GET("/:id/receipt", saleHandler.GetReceipt)
 	}
 
@@ -97,8 +97,8 @@ func SetupRoutes(
 	cart := r.Group("/api/carts")
 	cart.Use(authMiddleware, saleMiddleware)
 	{
-		cart.POST("/", saleHandler.AddToCart)
-		cart.GET("/", saleHandler.GetCart)
+		cart.POST("", saleHandler.AddToCart)
+		cart.GET("", saleHandler.GetCart)
 		cart.DELETE("/:item_id", saleHandler.RemoveFromCart)
 	}
 
