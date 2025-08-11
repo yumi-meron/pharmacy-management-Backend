@@ -94,7 +94,7 @@ func SetupRoutes(
 	}
 
 	// Cart routes (protected)
-	cart := r.Group("/api/cart")
+	cart := r.Group("/api/carts")
 	cart.Use(authMiddleware, saleMiddleware)
 	{
 		cart.POST("/", saleHandler.AddToCart)
