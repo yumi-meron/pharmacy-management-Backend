@@ -36,15 +36,33 @@ func NewValidator() *validator.Validate {
 	v := validator.New()
 	v.RegisterValidation("phone", func(fl validator.FieldLevel) bool {
 		phone := fl.Field().String()
-		if len(phone) < 10 || phone[0] != '+' {
+
+		// Check if the phone starts with '+' or '0'
+		if len(phone) < 10 || (phone[0] != '+' && phone[0] != '0') {
 			return false
 		}
-		for _, c := range phone[1:] {
-			if c < '0' || c > '9' {
-				return false
+
+		// If it starts with '+', validate the rest as digits
+		if phone[0] == '+' {
+			for _, c := range phone[1:] {
+				if c < '0' || c > '9' {
+					return false
+				}
 			}
+			return true
 		}
-		return true
+
+		// If it starts with '0', validate the rest as digits
+		if phone[0] == '0' {
+			for _, c := range phone[1:] {
+				if c < '0' || c > '9' {
+					return false
+				}
+			}
+			return true
+		}
+
+		return false
 	})
 	v.RegisterValidation("barcode", func(fl validator.FieldLevel) bool {
 		barcode := fl.Field().String()

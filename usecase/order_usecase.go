@@ -23,13 +23,14 @@ type OrderUsecase interface {
 // orderUsecase implements OrderUsecase
 type orderUsecase struct {
 	repo       repository.OrderRepository
+	mrepo      repository.MedicineRepository
 	smsService domain.SMSService
 	logger     zerolog.Logger
 }
 
 // NewOrderUsecase creates a new OrderUsecase
-func NewOrderUsecase(repo repository.OrderRepository, smsService domain.SMSService, logger zerolog.Logger) OrderUsecase {
-	return &orderUsecase{repo, smsService, logger}
+func NewOrderUsecase(repo repository.OrderRepository, mrepo repository.MedicineRepository, smsService domain.SMSService, logger zerolog.Logger) OrderUsecase {
+	return &orderUsecase{repo: repo, mrepo: mrepo, smsService: smsService, logger: logger}
 }
 
 // ListOrders retrieves a list of orders
@@ -70,13 +71,19 @@ func (u *orderUsecase) GetOrderDetails(ctx context.Context, callerRole string, c
 	response.Items = make([]domain.OrderItemResponse, len(items))
 	var totalPrice float64
 	for i, item := range items {
+		medicineVariant, err := u.mrepo.GetVariantByID(ctx, item.MedicineVariantID)
+		if err != nil {
+			u.logger.Error().Err(err).Msg("Failed to fetch medicine variant price")
+			return nil, err
+		}
+
 		response.Items[i] = domain.OrderItemResponse{
 			MedicineName: item.MedicineName,
 			Unit:         item.Unit,
 			Quantity:     item.Quantity,
-			PricePerUnit: item.PricePerUnit,
+			PricePerUnit: medicineVariant.PricePerUnit,
 		}
-		totalPrice += float64(item.Quantity) * item.PricePerUnit
+		totalPrice += float64(item.Quantity) * medicineVariant.PricePerUnit
 	}
 	response.ID = orderID
 	response.TotalPrice = totalPrice

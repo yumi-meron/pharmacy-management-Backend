@@ -64,7 +64,7 @@ func main() {
 	pharmacyUsecase := usecase.NewPharmacyUsecase(pharmacyRepo)
 	medicineUsecase := usecase.NewMedicineUsecase(medicineRepo, pharmacyRepo)
 	saleUsecase := usecase.NewSaleUsecase(saleRepo, medicineRepo)
-	orderUsecase := usecase.NewOrderUsecase(orderRepo, smsService, logger)
+	orderUsecase := usecase.NewOrderUsecase(orderRepo, medicineRepo, smsService, logger)
 
 	// Initialize Gin router
 	router := gin.Default()

@@ -3,6 +3,7 @@ package http
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"pharmacy-management-backend/domain"
 	"pharmacy-management-backend/usecase"
@@ -33,6 +34,9 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	if err := c.ShouldBindJSON(&input); err != nil {
 		utils.ErrorResponse(c, http.StatusBadRequest, err)
 		return
+	}
+	if len(input.PhoneNumber) >= 2 && input.PhoneNumber[:2] == "09" {
+		input.PhoneNumber = "+251" + input.PhoneNumber[1:]
 	}
 
 	// Validate input
@@ -238,4 +242,35 @@ func (h *AuthHandler) UpdateProfile(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Profile updated successfully"})
+}
+
+// Logout handles POST /auth/logout
+func (h *AuthHandler) Logout(c *gin.Context) {
+	// Extract token from Authorization header
+	authHeader := c.GetHeader("Authorization")
+	if authHeader == "" {
+		utils.ErrorResponse(c, http.StatusBadRequest, errors.New("authorization header required"))
+		return
+	}
+
+	parts := strings.Split(authHeader, " ")
+	if len(parts) != 2 || parts[0] != "Bearer" {
+		utils.ErrorResponse(c, http.StatusBadRequest, errors.New("invalid authorization header format"))
+		return
+	}
+
+	token := parts[1]
+
+	// Call usecase to blacklist token
+	if err := h.usecase.Logout(c.Request.Context(), token); err != nil {
+		switch err {
+		case domain.ErrInvalidToken:
+			utils.ErrorResponse(c, http.StatusUnauthorized, err)
+		default:
+			utils.ErrorResponse(c, http.StatusInternalServerError, err)
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})
 }

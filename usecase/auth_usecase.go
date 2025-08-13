@@ -23,6 +23,8 @@ type AuthUsecase interface {
 	RefreshToken(ctx context.Context, refreshToken string) (string, string, error)
 	GetProfile(ctx context.Context, userID uuid.UUID) (*domain.User, error)
 	UpdateProfile(ctx context.Context, userID uuid.UUID, input domain.UpdateProfileInput) error
+	Logout(ctx context.Context, token string) error
+	IsTokenBlacklisted(ctx context.Context, token string) (bool, error)
 }
 
 // authUsecase implements AuthUsecase
@@ -219,4 +221,36 @@ func (u *authUsecase) generateAccessToken(userID uuid.UUID, role domain.Role, ph
 // generateRefreshToken creates a refresh token
 func (u *authUsecase) generateRefreshToken(userID uuid.UUID) (string, error) {
 	return utils.GenerateRandomString(32)
+}
+
+// Logout blacklists the access token
+func (u *authUsecase) Logout(ctx context.Context, token string) error {
+	// Parse token to get expiry
+	tokenObj, err := jwt.Parse(token, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, domain.ErrUnauthorized
+		}
+		return []byte(u.cfg.JWTSecret), nil
+	})
+	if err != nil || !tokenObj.Valid {
+		return domain.ErrInvalidToken
+	}
+
+	claims, ok := tokenObj.Claims.(jwt.MapClaims)
+	if !ok {
+		return domain.ErrInvalidToken
+	}
+
+	exp, ok := claims["exp"].(float64)
+	if !ok {
+		return domain.ErrInvalidToken
+	}
+
+	// Blacklist the token
+	return u.repo.BlacklistToken(ctx, token, time.Unix(int64(exp), 0))
+}
+
+// IsTokenBlacklisted checks if a token is blacklisted
+func (u *authUsecase) IsTokenBlacklisted(ctx context.Context, token string) (bool, error) {
+	return u.repo.IsTokenBlacklisted(ctx, token)
 }

@@ -31,7 +31,7 @@ func SetupRoutes(
 	orderHandler := http.NewOrderHandler(orderUsecase, validator)
 
 	// Middleware
-	authMiddleware := middleware.AuthMiddleware(cfg)
+	authMiddleware := middleware.AuthMiddleware(cfg, authUsecase)
 	adminMiddleware := middleware.RoleMiddleware("admin")
 	adminOwnerMiddleware := middleware.RoleMiddleware("admin", "owner")
 	saleMiddleware := middleware.RoleMiddleware("owner", "pharmacist")
@@ -40,6 +40,7 @@ func SetupRoutes(
 	auth := r.Group("/auth")
 	{
 		auth.POST("/login", authHandler.Login)
+		auth.POST("/logout", authHandler.Logout)
 		auth.POST("/forgot-password", authHandler.RequestPasswordReset)
 		auth.POST("/reset-password", authHandler.ResetPassword)
 		auth.POST("/refresh-token", authHandler.RefreshToken)

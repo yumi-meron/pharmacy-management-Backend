@@ -24,6 +24,8 @@ type AuthRepository interface {
 	GetResetToken(ctx context.Context, token string) (*uuid.UUID, error)
 	DeleteResetToken(ctx context.Context, token string) error
 	GetPharmacists(ctx context.Context, pharmacyID *uuid.UUID) ([]domain.User, error)
+	IsTokenBlacklisted(ctx context.Context, token string) (bool, error)
+	BlacklistToken(ctx context.Context, token string, expiresAt time.Time) error
 }
 
 // authRepository implements AuthRepository
@@ -247,4 +249,36 @@ func (r *authRepository) GetPharmacists(ctx context.Context, pharmacyID *uuid.UU
 	}
 
 	return pharmacists, nil
+}
+
+// IsTokenBlacklisted checks if a token is blacklisted
+func (r *authRepository) IsTokenBlacklisted(ctx context.Context, token string) (bool, error) {
+	query := `
+        SELECT EXISTS (
+            SELECT 1
+            FROM blacklisted_tokens
+            WHERE token = $1 AND expires_at > $2
+        )
+    `
+	var exists bool
+	err := r.db.QueryRowContext(ctx, query, token, time.Now()).Scan(&exists)
+	if err != nil {
+		r.logger.Error().Err(err).Msg("Failed to check if token is blacklisted")
+		return false, err
+	}
+	return exists, nil
+}
+
+// BlacklistToken adds a token to the blacklist
+func (r *authRepository) BlacklistToken(ctx context.Context, token string, expiresAt time.Time) error {
+	query := `
+        INSERT INTO blacklisted_tokens (id, token, expires_at, created_at)
+        VALUES ($1, $2, $3, $4)
+    `
+	_, err := r.db.ExecContext(ctx, query, uuid.New(), token, expiresAt, time.Now())
+	if err != nil {
+		r.logger.Error().Err(err).Msg("Failed to blacklist token")
+		return err
+	}
+	return nil
 }
