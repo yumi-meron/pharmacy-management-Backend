@@ -78,6 +78,7 @@ func (u *orderUsecase) GetOrderDetails(ctx context.Context, callerRole string, c
 		}
 		totalPrice += float64(item.Quantity) * item.PricePerUnit
 	}
+	response.ID = orderID
 	response.TotalPrice = totalPrice
 
 	return &response, nil

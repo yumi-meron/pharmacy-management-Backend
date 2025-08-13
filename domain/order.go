@@ -85,6 +85,7 @@ type OrderItemResponse struct {
 
 // OrderDetailsResponse defines the response for order details
 type OrderDetailsResponse struct {
+	ID         uuid.UUID           `json:"id"`
 	Patient    PatientResponse     `json:"patient"`
 	Items      []OrderItemResponse `json:"items"`
 	TotalPrice float64             `json:"total_price"`
