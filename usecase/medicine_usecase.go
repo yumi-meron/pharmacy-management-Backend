@@ -15,7 +15,6 @@ type MedicineUsecase interface {
 	Create(ctx context.Context, callerRole string, callerPharmacyID uuid.UUID, input domain.CreateMedicineInput) error
 	GetAll(ctx context.Context, callerRole string, callerPharmacyID uuid.UUID) ([]domain.Medicine, error)
 	GetByID(ctx context.Context, callerRole string, callerPharmacyID, id uuid.UUID) (*domain.Medicine, error)
-	Update(ctx context.Context, callerRole string, callerPharmacyID, id uuid.UUID, input domain.UpdateMedicineInput) error
 	Delete(ctx context.Context, callerRole string, id uuid.UUID) error
 	CreateVariant(ctx context.Context, callerRole string, callerPharmacyID, medicineID uuid.UUID, input domain.CreateMedicineVariantInput) error
 	GetVariants(ctx context.Context, callerRole string, callerPharmacyID, medicineID uuid.UUID) ([]domain.MedicineVariant, error)
@@ -84,28 +83,28 @@ func (u *medicineUsecase) GetByID(ctx context.Context, callerRole string, caller
 	return medicine, nil
 }
 
-// Update updates a medicine with role-based restrictions
-func (u *medicineUsecase) Update(ctx context.Context, callerRole string, callerPharmacyID, id uuid.UUID, input domain.UpdateMedicineInput) error {
-	if callerRole != string(domain.RoleAdmin) && callerRole != string(domain.RoleOwner) {
-		return domain.ErrUnauthorized
-	}
+// // Update updates a medicine with role-based restrictions
+// func (u *medicineUsecase) Update(ctx context.Context, callerRole string, callerPharmacyID, id uuid.UUID, input domain.UpdateMedicineInput) error {
+// 	if callerRole != string(domain.RoleAdmin) && callerRole != string(domain.RoleOwner) {
+// 		return domain.ErrUnauthorized
+// 	}
 
-	medicine, err := u.repo.GetByID(ctx, id)
-	if err != nil {
-		return err
-	}
+// 	medicine, err := u.repo.GetByID(ctx, id)
+// 	if err != nil {
+// 		return err
+// 	}
 
-	if callerRole == string(domain.RoleOwner) && callerPharmacyID != medicine.PharmacyID {
-		return domain.ErrUnauthorized
-	}
+// 	if callerRole == string(domain.RoleOwner) && callerPharmacyID != medicine.PharmacyID {
+// 		return domain.ErrUnauthorized
+// 	}
 
-	medicine.Name = input.Name
-	medicine.Description = input.Description
-	medicine.Picture = input.Picture
-	medicine.UpdatedAt = time.Now()
+// 	medicine.Name = input.Name
+// 	medicine.Description = input.Description
+// 	medicine.Picture = input.Picture
+// 	medicine.UpdatedAt = time.Now()
 
-	return u.repo.Update(ctx, *medicine)
-}
+// 	return u.repo.Update(ctx, *medicine)
+// }
 
 // Delete deletes a medicine (Admin-only)
 func (u *medicineUsecase) Delete(ctx context.Context, callerRole string, id uuid.UUID) error {
@@ -204,22 +203,22 @@ func (u *medicineUsecase) UpdateVariant(ctx context.Context, callerRole string, 
 		return domain.ErrUnauthorized
 	}
 
-	variant, err := u.repo.GetVariantByID(ctx, variantID)
+	medicine, err := u.repo.GetByID(ctx, medicineID)
 	if err != nil {
 		return err
 	}
 
-	medicine, err := u.repo.GetByID(ctx, medicineID)
+	if callerRole == string(domain.RoleOwner) && callerPharmacyID != medicine.PharmacyID {
+		return domain.ErrUnauthorized
+	}
+
+	variant, err := u.repo.GetVariantByID(ctx, variantID)
 	if err != nil {
 		return err
 	}
 
 	if variant.MedicineID != medicineID {
 		return domain.ErrVariantNotFound
-	}
-
-	if callerRole == string(domain.RoleOwner) && callerPharmacyID != medicine.PharmacyID {
-		return domain.ErrUnauthorized
 	}
 
 	if input.Barcode != variant.Barcode {
@@ -230,6 +229,11 @@ func (u *medicineUsecase) UpdateVariant(ctx context.Context, callerRole string, 
 		}
 	}
 
+	medicine.Name = input.Name
+	medicine.Description = input.Description
+	medicine.Picture = input.Picture
+	medicine.UpdatedAt = time.Now()
+
 	variant.Brand = input.Brand
 	variant.Barcode = input.Barcode
 	variant.Unit = input.Unit
@@ -238,6 +242,9 @@ func (u *medicineUsecase) UpdateVariant(ctx context.Context, callerRole string, 
 	variant.Stock = input.Stock
 	variant.UpdatedAt = time.Now()
 
+	if err := u.repo.Update(ctx, *medicine); err != nil {
+		return err
+	}
 	return u.repo.UpdateVariant(ctx, *variant)
 }
 

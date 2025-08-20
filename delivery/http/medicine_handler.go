@@ -101,43 +101,43 @@ func (h *MedicineHandler) GetByID(c *gin.Context) {
 }
 
 // Update handles PUT /api/medicines/:id
-func (h *MedicineHandler) Update(c *gin.Context) {
-	idStr := c.Param("id")
-	id, err := uuid.Parse(idStr)
-	if err != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, errors.New("invalid medicine ID"))
-		return
-	}
+// func (h *MedicineHandler) Update(c *gin.Context) {
+// 	idStr := c.Param("id")
+// 	id, err := uuid.Parse(idStr)
+// 	if err != nil {
+// 		utils.ErrorResponse(c, http.StatusBadRequest, errors.New("invalid medicine ID"))
+// 		return
+// 	}
 
-	var input domain.UpdateMedicineInput
-	if err := c.ShouldBindJSON(&input); err != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, err)
-		return
-	}
+// 	var input domain.UpdateMedicineInput
+// 	if err := c.ShouldBindJSON(&input); err != nil {
+// 		utils.ErrorResponse(c, http.StatusBadRequest, err)
+// 		return
+// 	}
 
-	if err := h.validator.Struct(input); err != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, err)
-		return
-	}
+// 	if err := h.validator.Struct(input); err != nil {
+// 		utils.ErrorResponse(c, http.StatusBadRequest, err)
+// 		return
+// 	}
 
-	role, _ := c.Get("role")
-	pharmacyIDStr, _ := c.Get("pharmacy_id")
-	pharmacyID, _ := uuid.Parse(pharmacyIDStr.(string))
+// 	role, _ := c.Get("role")
+// 	pharmacyIDStr, _ := c.Get("pharmacy_id")
+// 	pharmacyID, _ := uuid.Parse(pharmacyIDStr.(string))
 
-	if err := h.usecase.Update(c.Request.Context(), role.(string), pharmacyID, id, input); err != nil {
-		switch err {
-		case domain.ErrMedicineNotFound:
-			utils.ErrorResponse(c, http.StatusNotFound, err)
-		case domain.ErrUnauthorized:
-			utils.ErrorResponse(c, http.StatusForbidden, err)
-		default:
-			utils.ErrorResponse(c, http.StatusInternalServerError, err)
-		}
-		return
-	}
+// 	if err := h.usecase.Update(c.Request.Context(), role.(string), pharmacyID, id, input); err != nil {
+// 		switch err {
+// 		case domain.ErrMedicineNotFound:
+// 			utils.ErrorResponse(c, http.StatusNotFound, err)
+// 		case domain.ErrUnauthorized:
+// 			utils.ErrorResponse(c, http.StatusForbidden, err)
+// 		default:
+// 			utils.ErrorResponse(c, http.StatusInternalServerError, err)
+// 		}
+// 		return
+// 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Medicine updated successfully"})
-}
+// 	c.JSON(http.StatusOK, gin.H{"message": "Medicine updated successfully"})
+// }
 
 // Delete handles DELETE /api/medicines/:id
 func (h *MedicineHandler) Delete(c *gin.Context) {

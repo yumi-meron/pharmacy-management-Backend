@@ -8,15 +8,14 @@ import (
 
 // Medicine represents a medicine entity
 type Medicine struct {
-	ID          uuid.UUID `json:"id" validate:"required"`
-	PharmacyID  uuid.UUID `json:"pharmacy_id" validate:"required"`
-	Name        string    `json:"name" validate:"required,min=2,max=100"`
-	Description string    `json:"description" validate:"max=500"`
-	Picture     string    `json:"picture" validate:"omitempty,url"`
-	CreatedAt   time.Time `json:"created_at" validate:"required"`
-	UpdatedAt   time.Time `json:"updated_at" validate:"required"`
+	ID          uuid.UUID         `json:"id" validate:"required"`
+	PharmacyID  uuid.UUID         `json:"pharmacy_id" validate:"required"`
+	Name        string            `json:"name" validate:"required,min=2,max=100"`
+	Description string            `json:"description" validate:"max=500"`
+	Picture     string            `json:"picture" validate:"omitempty,url"`
+	CreatedAt   time.Time         `json:"created_at" validate:"required"`
+	UpdatedAt   time.Time         `json:"updated_at" validate:"required"`
 	Variants    []MedicineVariant `json:"variants" validate:"dive"`
-
 }
 
 // MedicineVariant represents a variant of a medicine
@@ -41,13 +40,6 @@ type CreateMedicineInput struct {
 	Picture     string    `json:"picture" validate:"omitempty,url"`
 }
 
-// UpdateMedicineInput for updating a medicine
-type UpdateMedicineInput struct {
-	Name        string `json:"name" validate:"required,min=2,max=100"`
-	Description string `json:"description" validate:"max=500"`
-	Picture     string `json:"picture" validate:"omitempty,url"`
-}
-
 // CreateMedicineVariantInput for creating a medicine variant
 type CreateMedicineVariantInput struct {
 	Brand        string    `json:"brand" validate:"required,min=2,max=100"`
@@ -60,6 +52,9 @@ type CreateMedicineVariantInput struct {
 
 // UpdateMedicineVariantInput for updating a medicine variant
 type UpdateMedicineVariantInput struct {
+	Name         string    `json:"name" validate:"required,min=2,max=100"`
+	Description  string    `json:"description" validate:"max=500"`
+	Picture      string    `json:"picture" validate:"omitempty,url"`
 	Brand        string    `json:"brand" validate:"required,min=2,max=100"`
 	Barcode      string    `json:"barcode" validate:"required,barcode"`
 	Unit         string    `json:"unit" validate:"required,min=1,max=50"`
