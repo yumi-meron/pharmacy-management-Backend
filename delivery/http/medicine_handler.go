@@ -3,7 +3,12 @@ package http
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
 
 	"pharmacy-management-backend/domain"
 	"pharmacy-management-backend/usecase"
@@ -17,12 +22,13 @@ import (
 // MedicineHandler handles medicine-related HTTP requests
 type MedicineHandler struct {
 	usecase   usecase.MedicineUsecase
+	ausecase  usecase.AuthUsecase
 	validator *validator.Validate
 }
 
 // NewMedicineHandler creates a new MedicineHandler
-func NewMedicineHandler(usecase usecase.MedicineUsecase, validator *validator.Validate) *MedicineHandler {
-	return &MedicineHandler{usecase, validator}
+func NewMedicineHandler(usecase usecase.MedicineUsecase, ausecase usecase.AuthUsecase, validator *validator.Validate) *MedicineHandler {
+	return &MedicineHandler{usecase, ausecase, validator}
 }
 
 // Create handles POST /api/medicines
@@ -275,6 +281,11 @@ func (h *MedicineHandler) GetVariantByID(c *gin.Context) {
 
 // UpdateVariant handles PUT /api/medicines/:id/variants/:variant_id
 func (h *MedicineHandler) UpdateVariant(c *gin.Context) {
+	if err := c.Request.ParseMultipartForm(10 << 20); err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, fmt.Errorf("error parsing form: %v", err))
+		return
+	}
+
 	idStr := c.Param("id")
 	medicineID, err := uuid.Parse(idStr)
 	if err != nil {
@@ -289,20 +300,53 @@ func (h *MedicineHandler) UpdateVariant(c *gin.Context) {
 		return
 	}
 
-	var input domain.UpdateMedicineVariantInput
-	if err := c.ShouldBindJSON(&input); err != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, err)
-		return
+	var input = domain.UpdateMedicineVariantInput{
+		Brand:        c.PostForm("brand"),
+		Barcode:      c.PostForm("barcode"),
+		Unit:         c.PostForm("unit"),
+		PricePerUnit: parseFloat(c.PostForm("price_per_unit")),
+		Stock:        parseInt(c.PostForm("stock")),
+		ExpiryDate:   parseDate(c.PostForm("expiry_date")),
+		Picture:      "",
 	}
 
 	if err := h.validator.Struct(input); err != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, err)
+		utils.ErrorResponse(c, http.StatusBadRequest, fmt.Errorf("validation failed: %v", err))
 		return
 	}
 
 	role, _ := c.Get("role")
 	pharmacyIDStr, _ := c.Get("pharmacy_id")
 	pharmacyID, _ := uuid.Parse(pharmacyIDStr.(string))
+
+	file, fileHeader, err := c.Request.FormFile("picture")
+	var pictureURL string
+	if err == nil && file != nil && fileHeader != nil {
+		defer file.Close()
+		fileData, err := io.ReadAll(file)
+		if err != nil {
+			utils.ErrorResponse(c, http.StatusInternalServerError, fmt.Errorf("error reading file: %v", err))
+			return
+		}
+		if len(fileData) == 0 {
+			utils.ErrorResponse(c, http.StatusBadRequest, fmt.Errorf("empty file uploaded"))
+			return
+		}
+
+		// Extract file extension
+		fileExt := strings.ToLower(filepath.Ext(fileHeader.Filename))
+		if fileExt == "" {
+			utils.ErrorResponse(c, http.StatusBadRequest, fmt.Errorf("file has no extension"))
+			return
+		}
+
+		pictureURL, err = h.ausecase.UploadProfilePicture(c.Request.Context(), variantID, fileData, fileExt)
+		if err != nil {
+			utils.ErrorResponse(c, http.StatusInternalServerError, fmt.Errorf("failed to upload variant picture: %v", err))
+			return
+		}
+		input.Picture = pictureURL
+	}
 
 	if err := h.usecase.UpdateVariant(c.Request.Context(), role.(string), pharmacyID, medicineID, variantID, input); err != nil {
 		switch err {
@@ -313,12 +357,37 @@ func (h *MedicineHandler) UpdateVariant(c *gin.Context) {
 		case domain.ErrBarcodeTaken:
 			utils.ErrorResponse(c, http.StatusConflict, err)
 		default:
-			utils.ErrorResponse(c, http.StatusInternalServerError, err)
+			utils.ErrorResponse(c, http.StatusInternalServerError, fmt.Errorf("failed to update variant: %v", err))
 		}
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Medicine variant updated successfully"})
+}
+
+// Helper functions for parsing form data
+func parseFloat(value string) float64 {
+	if value == "" {
+		return 0
+	}
+	result, _ := strconv.ParseFloat(value, 64)
+	return result
+}
+
+func parseInt(value string) int {
+	if value == "" {
+		return 0
+	}
+	result, _ := strconv.Atoi(value)
+	return result
+}
+
+func parseDate(value string) time.Time {
+	if value == "" {
+		return time.Time{}
+	}
+	parsedDate, _ := time.Parse("2006-01-02", value)
+	return parsedDate
 }
 
 // DeleteVariant handles DELETE /api/medicines/:id/variants/:variant_id

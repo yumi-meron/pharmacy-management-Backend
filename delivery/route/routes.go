@@ -26,7 +26,7 @@ func SetupRoutes(
 	authHandler := http.NewAuthHandler(authUsecase, validator)
 	userHandler := http.NewUserHandler(userUsecase, validator)
 	pharmacyHandler := http.NewPharmacyHandler(pharmacyUsecase, validator)
-	medicineHandler := http.NewMedicineHandler(medicineUsecase, validator)
+	medicineHandler := http.NewMedicineHandler(medicineUsecase, authUsecase, validator)
 	saleHandler := http.NewSaleHandler(saleUsecase, validator)
 	orderHandler := http.NewOrderHandler(orderUsecase, validator)
 

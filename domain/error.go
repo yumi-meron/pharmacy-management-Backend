@@ -30,4 +30,6 @@ var (
 	ErrPatientNotFound       = errors.New("patient not found")
 	ErrOrderAlreadyConfirmed = errors.New("order already confirmed")
 	ErrInvalidPhone          = errors.New("invalid phone number")
+
+	ErrBarcodeNotFound = errors.New("barcode not found")
 )
