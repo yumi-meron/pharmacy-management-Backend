@@ -121,7 +121,8 @@ func (u *authUsecase) ResetPassword(ctx context.Context, token, newPassword stri
 	// Update user password
 	user.Password = string(hashedPassword)
 	user.UpdatedAt = time.Now()
-	if err := u.repo.Update(ctx, *user); err != nil {
+	_, err = u.repo.Update(ctx, *user)
+	if err != nil {
 		return err
 	}
 
@@ -179,13 +180,13 @@ func (u *authUsecase) GetProfile(ctx context.Context, userID uuid.UUID) (*domain
 func (u *authUsecase) UpdateProfile(ctx context.Context, userID uuid.UUID, input domain.UpdateProfileInput) (*domain.User, error) {
 	user, err := u.repo.GetByID(ctx, userID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Check if phone number is taken by another user
 	if input.PhoneNumber != user.PhoneNumber {
 		if existingUser, _ := u.repo.GetByPhone(ctx, input.PhoneNumber); existingUser != nil {
-			return domain.ErrPhoneNumberTaken
+			return nil, domain.ErrPhoneNumberTaken
 		}
 	}
 
@@ -195,7 +196,7 @@ func (u *authUsecase) UpdateProfile(ctx context.Context, userID uuid.UUID, input
 	if input.Password != "" {
 		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		user.Password = string(hashedPassword)
 	}
