@@ -10,6 +10,8 @@ import (
 type Config struct {
 	Port        string
 	DatabaseURL string
+	SupabaseURL string
+	SupabaseKey string
 	JWTSecret   string
 	TwilioSID   string
 	TwilioToken string
@@ -23,6 +25,8 @@ func Load() (*Config, error) {
 	cfg := &Config{
 		Port:        getEnv("PORT", "8080"),
 		DatabaseURL: getEnv("DATABASE_URL", "postgres://user:password@localhost:5432/pharmacist?sslmode=disable"),
+		SupabaseURL: getEnv("SUPABASE_URL", "https://your-supabase-url.supabase.co"),
+		SupabaseKey: getEnv("SUPABASE_KEY", "your-supabase-key"),
 		JWTSecret:   getEnv("JWT_SECRET", "your_jwt_secret"),
 		TwilioSID:   getEnv("TWILIO_SID", ""),
 		TwilioToken: getEnv("TWILIO_TOKEN", ""),

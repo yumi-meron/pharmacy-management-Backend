@@ -2,7 +2,10 @@ package http
 
 import (
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
+	"path/filepath"
 	"strings"
 
 	"pharmacy-management-backend/domain"
@@ -205,28 +208,62 @@ func (h *AuthHandler) GetProfile(c *gin.Context) {
 
 // UpdateProfile handles PUT /api/users/me
 func (h *AuthHandler) UpdateProfile(c *gin.Context) {
-	var input domain.UpdateProfileInput
-	if err := c.ShouldBindJSON(&input); err != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, err)
+	if err := c.Request.ParseMultipartForm(10 << 20); err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, fmt.Errorf("error parsing form: %v", err))
 		return
 	}
 
-	// Validate input
+	var input = domain.UpdateProfileInput{
+		FullName:       c.PostForm("full_name"),
+		PhoneNumber:    c.PostForm("phone_number"),
+		Password:       c.PostForm("password"),
+		ProfilePicture: "",
+	}
+
 	if err := h.validator.Struct(input); err != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, err)
+		utils.ErrorResponse(c, http.StatusBadRequest, fmt.Errorf("validation failed: %v", err))
 		return
 	}
 
 	userIDStr, exists := c.Get("user_id")
 	if !exists {
-		utils.ErrorResponse(c, http.StatusUnauthorized, errors.New("user ID not found in context"))
+		utils.ErrorResponse(c, http.StatusUnauthorized, fmt.Errorf("user ID not found in context"))
 		return
 	}
 
 	userID, err := uuid.Parse(userIDStr.(string))
 	if err != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, errors.New("invalid user ID"))
+		utils.ErrorResponse(c, http.StatusBadRequest, fmt.Errorf("invalid user ID: %v", err))
 		return
+	}
+
+	file, fileHeader, err := c.Request.FormFile("profile_picture")
+	var profilePictureURL string
+	if err == nil && file != nil && fileHeader != nil {
+		defer file.Close()
+		fileData, err := io.ReadAll(file)
+		if err != nil {
+			utils.ErrorResponse(c, http.StatusInternalServerError, fmt.Errorf("error reading file: %v", err))
+			return
+		}
+		if len(fileData) == 0 {
+			utils.ErrorResponse(c, http.StatusBadRequest, fmt.Errorf("empty file uploaded"))
+			return
+		}
+
+		// Extract file extension
+		fileExt := strings.ToLower(filepath.Ext(fileHeader.Filename))
+		if fileExt == "" {
+			utils.ErrorResponse(c, http.StatusBadRequest, fmt.Errorf("file has no extension"))
+			return
+		}
+
+		profilePictureURL, err = h.usecase.UploadProfilePicture(c.Request.Context(), userID, fileData, fileExt)
+		if err != nil {
+			utils.ErrorResponse(c, http.StatusInternalServerError, fmt.Errorf("failed to upload profile picture: %v", err))
+			return
+		}
+		input.ProfilePicture = profilePictureURL
 	}
 
 	if err := h.usecase.UpdateProfile(c.Request.Context(), userID, input); err != nil {
@@ -236,12 +273,15 @@ func (h *AuthHandler) UpdateProfile(c *gin.Context) {
 		case domain.ErrNotFound:
 			utils.ErrorResponse(c, http.StatusNotFound, err)
 		default:
-			utils.ErrorResponse(c, http.StatusInternalServerError, err)
+			utils.ErrorResponse(c, http.StatusInternalServerError, fmt.Errorf("failed to update profile: %v", err))
 		}
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Profile updated successfully"})
+	c.JSON(http.StatusOK, gin.H{
+		"message":         "Profile updated successfully",
+		"profile_picture": profilePictureURL,
+	})
 }
 
 // Logout handles POST /auth/logout

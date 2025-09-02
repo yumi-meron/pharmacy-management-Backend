@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"pharmacy-management-backend/domain"
@@ -21,6 +22,7 @@ type MedicineUsecase interface {
 	GetVariantByID(ctx context.Context, callerRole string, callerPharmacyID, medicineID, variantID uuid.UUID) (*domain.MedicineVariant, error)
 	UpdateVariant(ctx context.Context, callerRole string, callerPharmacyID, medicineID, variantID uuid.UUID, input domain.UpdateMedicineVariantInput) error
 	DeleteVariant(ctx context.Context, callerRole string, variantID uuid.UUID) error
+	SearchMedicines(ctx context.Context, params domain.SearchParams) ([]domain.Medicine, error)
 }
 
 // medicineUsecase implements MedicineUsecase
@@ -56,8 +58,8 @@ func (u *medicineUsecase) Create(ctx context.Context, callerRole string, callerP
 		Name:        input.Name,
 		Description: input.Description,
 		Picture:     input.Picture,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
 	}
 
 	return u.repo.Create(ctx, medicine)
@@ -101,7 +103,7 @@ func (u *medicineUsecase) GetByID(ctx context.Context, callerRole string, caller
 // 	medicine.Name = input.Name
 // 	medicine.Description = input.Description
 // 	medicine.Picture = input.Picture
-// 	medicine.UpdatedAt = time.Now()
+// 	medicine.UpdatedAt = time.Now().UTC()
 
 // 	return u.repo.Update(ctx, *medicine)
 // }
@@ -153,8 +155,8 @@ func (u *medicineUsecase) CreateVariant(ctx context.Context, callerRole string, 
 		PricePerUnit: input.PricePerUnit,
 		ExpiryDate:   input.ExpiryDate,
 		Stock:        input.Stock,
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+		CreatedAt:    time.Now().UTC(),
+		UpdatedAt:    time.Now().UTC(),
 	}
 
 	return u.repo.CreateVariant(ctx, variant)
@@ -232,7 +234,7 @@ func (u *medicineUsecase) UpdateVariant(ctx context.Context, callerRole string, 
 	medicine.Name = input.Name
 	medicine.Description = input.Description
 	medicine.Picture = input.Picture
-	medicine.UpdatedAt = time.Now()
+	medicine.UpdatedAt = time.Now().UTC()
 
 	variant.Brand = input.Brand
 	variant.Barcode = input.Barcode
@@ -240,7 +242,7 @@ func (u *medicineUsecase) UpdateVariant(ctx context.Context, callerRole string, 
 	variant.PricePerUnit = input.PricePerUnit
 	variant.ExpiryDate = input.ExpiryDate
 	variant.Stock = input.Stock
-	variant.UpdatedAt = time.Now()
+	variant.UpdatedAt = time.Now().UTC()
 
 	if err := u.repo.Update(ctx, *medicine); err != nil {
 		return err
@@ -255,4 +257,26 @@ func (u *medicineUsecase) DeleteVariant(ctx context.Context, callerRole string, 
 	}
 
 	return u.repo.DeleteVariant(ctx, variantID)
+}
+
+func (u *medicineUsecase) SearchMedicines(ctx context.Context, params domain.SearchParams) ([]domain.Medicine, error) {
+
+	if params.Filter != "brand" && params.Filter != "description" {
+		params.Filter = "name"
+	}
+
+	// Set default pagination
+	if params.Limit <= 0 {
+		params.Limit = 10
+	}
+
+	// Preprocess query for prefix matching (add :* to each term)
+	if params.Query != "" {
+		terms := strings.Fields(params.Query)
+		for i, term := range terms {
+			terms[i] = term + ":*"
+		}
+		params.Query = strings.Join(terms, " & ")
+	}
+	return u.repo.SearchMedicines(ctx, params)
 }

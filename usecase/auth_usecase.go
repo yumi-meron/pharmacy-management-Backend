@@ -23,6 +23,7 @@ type AuthUsecase interface {
 	RefreshToken(ctx context.Context, refreshToken string) (string, string, error)
 	GetProfile(ctx context.Context, userID uuid.UUID) (*domain.User, error)
 	UpdateProfile(ctx context.Context, userID uuid.UUID, input domain.UpdateProfileInput) error
+	UploadProfilePicture(ctx context.Context, userID uuid.UUID, fileData []byte, fileExt string) (string, error)
 	Logout(ctx context.Context, token string) error
 	IsTokenBlacklisted(ctx context.Context, token string) (bool, error)
 }
@@ -204,6 +205,10 @@ func (u *authUsecase) UpdateProfile(ctx context.Context, userID uuid.UUID, input
 	user.UpdatedAt = time.Now()
 
 	return u.repo.Update(ctx, *user)
+}
+
+func (u *authUsecase) UploadProfilePicture(ctx context.Context, userID uuid.UUID, fileData []byte, fileExt string) (string, error) {
+	return u.repo.UploadProfilePicture(ctx, userID, fileData, fileExt)
 }
 
 // generateAccessToken creates a JWT access token

@@ -3,10 +3,14 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"fmt"
+	"strings"
 
 	"pharmacy-management-backend/domain"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"github.com/rs/zerolog"
 )
 
@@ -24,6 +28,7 @@ type MedicineRepository interface {
 	UpdateVariant(ctx context.Context, variant domain.MedicineVariant) error
 	DeleteVariant(ctx context.Context, id uuid.UUID) error
 	CheckBarcodeExists(ctx context.Context, barcode string) (bool, error)
+	SearchMedicines(ctx context.Context, params domain.SearchParams) ([]domain.Medicine, error)
 }
 
 // medicineRepository implements MedicineRepository
@@ -287,4 +292,91 @@ func (r *medicineRepository) CheckBarcodeExists(ctx context.Context, barcode str
 		return false, err
 	}
 	return exists, nil
+}
+
+func (r *medicineRepository) SearchMedicines(ctx context.Context, params domain.SearchParams) ([]domain.Medicine, error) {
+	var query strings.Builder
+	var args []interface{}
+	argIndex := 1
+
+	query.WriteString(`
+    SELECT 
+        m.id, m.pharmacy_id, m.name, m.description, m.picture, m.created_at, m.updated_at,
+        array_agg(row_to_json(v)::text) as variants_json
+    FROM medicines m
+    LEFT JOIN medicine_variants v ON v.medicine_id = m.id
+    WHERE 1=1
+`)
+
+	// PharmacyID filter
+	if params.PharmacyID != uuid.Nil {
+		query.WriteString(fmt.Sprintf(" AND m.pharmacy_id = $%d", argIndex))
+		args = append(args, params.PharmacyID)
+		argIndex++
+	}
+
+	// Dynamic full-text search based on filter
+	if params.Query != "" {
+		var tsField string
+		switch params.Filter {
+		case "brand":
+			tsField = "v.ts_brand"
+		case "description":
+			tsField = "m.ts_description"
+		default: // "name"
+			tsField = "m.ts_name"
+		}
+		query.WriteString(fmt.Sprintf(" AND %s @@ to_tsquery('english', $%d)", tsField, argIndex))
+		args = append(args, params.Query)
+		argIndex++
+	}
+
+	// Group and paginate
+	query.WriteString(fmt.Sprintf(`
+    GROUP BY m.id, m.pharmacy_id, m.name, m.description, m.picture, m.created_at, m.updated_at
+    ORDER BY m.name ASC
+    LIMIT $%d OFFSET $%d
+`, argIndex, argIndex+1))
+	args = append(args, params.Limit, params.Offset)
+
+	r.logger.Debug().Str("query", query.String()).Interface("args", args).Msg("Executing SearchMedicines query")
+	// Execute query
+	rows, err := r.db.QueryContext(ctx, query.String(), args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute search query: %w", err)
+	}
+	defer rows.Close()
+
+	var medicines []domain.Medicine
+	for rows.Next() {
+		var m domain.Medicine
+		var variantsJSON []string
+		err := rows.Scan(
+			&m.ID, &m.PharmacyID, &m.Name, &m.Description, &m.Picture, &m.CreatedAt, &m.UpdatedAt,
+			pq.Array(&variantsJSON),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan medicine row: %w", err)
+		}
+
+		// Parse variants from JSON
+		for _, vj := range variantsJSON {
+			if vj == "" {
+				continue
+			}
+			var v domain.MedicineVariant
+			if err := json.Unmarshal([]byte(vj), &v); err != nil {
+				r.logger.Error().Err(err).Str("variant_json", vj).Msg("Failed to unmarshal variant JSON")
+				return nil, fmt.Errorf("failed to unmarshal variant JSON: %w", err)
+			}
+			m.Variants = append(m.Variants, v)
+		}
+
+		medicines = append(medicines, m)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating rows: %w", err)
+	}
+	return medicines, nil
 }

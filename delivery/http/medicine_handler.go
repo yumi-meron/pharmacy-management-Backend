@@ -2,6 +2,7 @@ package http
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
 	"pharmacy-management-backend/domain"
@@ -343,4 +344,59 @@ func (h *MedicineHandler) DeleteVariant(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Medicine variant deleted successfully"})
+}
+
+func (h *MedicineHandler) SearchMedicines(c *gin.Context) {
+	var params domain.SearchParams
+
+	// Try binding JSON body first
+	if err := c.ShouldBindJSON(&params); err != nil {
+		// If JSON binding fails, try query parameters as a fallback
+		params.Query = c.Query("query")
+		params.Filter = c.Query("filter")
+
+		if limitStr := c.Query("limit"); limitStr != "" {
+			var limit int
+			if _, err := fmt.Sscanf(limitStr, "%d", &limit); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid limit"})
+				return
+			}
+			params.Limit = limit
+		}
+		if offsetStr := c.Query("offset"); offsetStr != "" {
+			var offset int
+			if _, err := fmt.Sscanf(offsetStr, "%d", &offset); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid offset"})
+				return
+			}
+			params.Offset = offset
+		}
+	}
+
+	// Parse PharmacyID from context (set by middleware)
+	pharmacyIDStr, exists := c.Get("pharmacy_id")
+	if exists {
+		pharmacyID, err := uuid.Parse(pharmacyIDStr.(string))
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid pharmacy ID"})
+			return
+		}
+		params.PharmacyID = pharmacyID
+	}
+
+	// Validate SearchParams
+	if err := h.validator.Struct(params); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("validation failed: %v", err)})
+		return
+	}
+
+	// Execute search
+	medicines, err := h.usecase.SearchMedicines(c.Request.Context(), params)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to search medicines: %v", err)})
+		return
+	}
+
+	// Respond with JSON
+	c.JSON(http.StatusOK, medicines)
 }

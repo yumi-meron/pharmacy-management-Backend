@@ -74,7 +74,7 @@ func SetupRoutes(
 	{
 		medicines.POST("", adminOwnerMiddleware, medicineHandler.Create)
 		medicines.GET("", medicineHandler.GetAll)
-		medicines.GET("/search", saleMiddleware, saleHandler.SearchMedicines)
+		medicines.GET("/search", medicineHandler.SearchMedicines)
 		medicines.GET("/:id", medicineHandler.GetByID)
 		medicines.DELETE("/:id", adminMiddleware, medicineHandler.Delete)
 		medicines.POST("/:id/variants", adminOwnerMiddleware, medicineHandler.CreateVariant)

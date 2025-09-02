@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -61,4 +62,66 @@ type UpdateMedicineVariantInput struct {
 	PricePerUnit float64   `json:"price_per_unit" validate:"required,gt=0"`
 	ExpiryDate   time.Time `json:"expiry_date" validate:"required,future_date"`
 	Stock        int       `json:"stock" validate:"required,gte=0"`
+}
+
+func (v *MedicineVariant) UnmarshalJSON(data []byte) error {
+	type Alias MedicineVariant
+	aux := &struct {
+		ExpiryDate string `json:"expiry_date"`
+		CreatedAt  string `json:"created_at"`
+		UpdatedAt  string `json:"updated_at"`
+		*Alias
+	}{
+		Alias: (*Alias)(v),
+	}
+
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	// Parse ExpiryDate
+	if aux.ExpiryDate != "" {
+		parsedTime, err := parseTime(aux.ExpiryDate)
+		if err != nil {
+			return err
+		}
+		v.ExpiryDate = parsedTime
+	}
+
+	// Parse CreatedAt
+	if aux.CreatedAt != "" {
+		parsedTime, err := parseTime(aux.CreatedAt)
+		if err != nil {
+			return err
+		}
+		v.CreatedAt = parsedTime
+	}
+
+	// Parse UpdatedAt
+	if aux.UpdatedAt != "" {
+		parsedTime, err := parseTime(aux.UpdatedAt)
+		if err != nil {
+			return err
+		}
+		v.UpdatedAt = parsedTime
+	}
+
+	return nil
+}
+
+// Helper function to parse time with or without timezone
+func parseTime(value string) (time.Time, error) {
+	// Try parsing with RFC3339
+	parsedTime, err := time.Parse(time.RFC3339, value)
+	if err == nil {
+		return parsedTime, nil
+	}
+
+	// Try parsing without timezone
+	parsedTime, err = time.Parse("2006-01-02T15:04:05.999999", value)
+	if err == nil {
+		return parsedTime, nil
+	}
+
+	return time.Time{}, err
 }

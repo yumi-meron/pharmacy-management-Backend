@@ -36,6 +36,12 @@ func main() {
 	}
 	defer db.Close()
 
+	// Initialize Supabase client
+	supabaseClient, err := infrastructure.NewSupabase(cfg, logger)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("Failed to initialize Supabase client")
+	}
+
 	// Initialize Twilio service
 	smsService := infrastructure.NewTwilioService(cfg, logger)
 
@@ -47,14 +53,13 @@ func main() {
 	logger.Info().Msg("Custom validations registered successfully")
 
 	// Initialize repositories
-	authRepo := repository.NewAuthRepository(db, logger)
+	authRepo := repository.NewAuthRepository(db, logger, supabaseClient, cfg.SupabaseURL)
 	pharmacyRepo := repository.NewPharmacyRepository(db, logger)
 	medicineRepo := repository.NewMedicineRepository(db, logger)
 	saleRepo := repository.NewSaleRepository(db, logger)
 	orderRepo := repository.NewOrderRepository(db, logger)
 
 	// Initialize use cases
-	// Type assertion to convert smsService (domain.SMSService) to *infrastructure.TwilioService
 	twilioService, ok := smsService.(*infrastructure.TwilioService)
 	if !ok {
 		logger.Fatal().Msg("Failed to assert smsService to *infrastructure.TwilioService")
@@ -68,8 +73,6 @@ func main() {
 
 	// Initialize Gin router
 	router := gin.Default()
-
-	// Add logger middleware
 	router.Use(middleware.LoggerMiddleware(logger))
 
 	// Set up routes
