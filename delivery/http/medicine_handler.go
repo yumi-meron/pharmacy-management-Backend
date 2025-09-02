@@ -301,6 +301,7 @@ func (h *MedicineHandler) UpdateVariant(c *gin.Context) {
 	}
 
 	var input = domain.UpdateMedicineVariantInput{
+		Name:         c.PostForm("name"),
 		Brand:        c.PostForm("brand"),
 		Barcode:      c.PostForm("barcode"),
 		Unit:         c.PostForm("unit"),
