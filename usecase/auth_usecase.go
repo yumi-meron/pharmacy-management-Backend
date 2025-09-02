@@ -22,7 +22,7 @@ type AuthUsecase interface {
 	ResetPassword(ctx context.Context, token, newPassword string) error
 	RefreshToken(ctx context.Context, refreshToken string) (string, string, error)
 	GetProfile(ctx context.Context, userID uuid.UUID) (*domain.User, error)
-	UpdateProfile(ctx context.Context, userID uuid.UUID, input domain.UpdateProfileInput) error
+	UpdateProfile(ctx context.Context, userID uuid.UUID, input domain.UpdateProfileInput) (*domain.User, error)
 	UploadProfilePicture(ctx context.Context, userID uuid.UUID, fileData []byte, fileExt string) (string, error)
 	Logout(ctx context.Context, token string) error
 	IsTokenBlacklisted(ctx context.Context, token string) (bool, error)
@@ -176,7 +176,7 @@ func (u *authUsecase) GetProfile(ctx context.Context, userID uuid.UUID) (*domain
 }
 
 // UpdateProfile updates the user's profile
-func (u *authUsecase) UpdateProfile(ctx context.Context, userID uuid.UUID, input domain.UpdateProfileInput) error {
+func (u *authUsecase) UpdateProfile(ctx context.Context, userID uuid.UUID, input domain.UpdateProfileInput) (*domain.User, error) {
 	user, err := u.repo.GetByID(ctx, userID)
 	if err != nil {
 		return err

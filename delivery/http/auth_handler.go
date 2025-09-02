@@ -195,14 +195,12 @@ func (h *AuthHandler) GetProfile(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"id":              user.ID,
-		"phone_number":    user.PhoneNumber,
-		"full_name":       user.FullName,
-		"role":            user.Role,
-		"pharmacy_id":     user.PharmacyID,
-		"profile_picture": user.ProfilePicture,
-		"created_at":      user.CreatedAt,
-		"updated_at":      user.UpdatedAt,
+		"id":           user.ID,
+		"phone_number": user.PhoneNumber,
+		"name":         user.FullName,
+		"role":         user.Role,
+		"pharmacy_id":  user.PharmacyID,
+		"picture":      user.ProfilePicture,
 	})
 }
 
@@ -266,7 +264,8 @@ func (h *AuthHandler) UpdateProfile(c *gin.Context) {
 		input.ProfilePicture = profilePictureURL
 	}
 
-	if err := h.usecase.UpdateProfile(c.Request.Context(), userID, input); err != nil {
+	user, err := h.usecase.UpdateProfile(c.Request.Context(), userID, input)
+	if err != nil {
 		switch err {
 		case domain.ErrPhoneNumberTaken:
 			utils.ErrorResponse(c, http.StatusConflict, err)
@@ -279,9 +278,15 @@ func (h *AuthHandler) UpdateProfile(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":         "Profile updated successfully",
-		"profile_picture": profilePictureURL,
+
+		"id":           user.ID,
+		"phone_number": user.PhoneNumber,
+		"name":         user.FullName,
+		"role":         user.Role,
+		"pharmacy_id":  user.PharmacyID,
+		"picture":      user.ProfilePicture,
 	})
+
 }
 
 // Logout handles POST /auth/logout

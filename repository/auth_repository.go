@@ -22,7 +22,7 @@ type AuthRepository interface {
 	Create(ctx context.Context, user domain.User) error
 	GetByPhone(ctx context.Context, phoneNumber string) (*domain.User, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.User, error)
-	Update(ctx context.Context, user domain.User) error
+	Update(ctx context.Context, user domain.User) (*domain.User, error)
 	UploadProfilePicture(ctx context.Context, userID uuid.UUID, fileData []byte, fileExt string) (string, error)
 	SaveRefreshToken(ctx context.Context, userID uuid.UUID, token string, expiresAt time.Time) error
 	GetRefreshToken(ctx context.Context, token string) (*uuid.UUID, error)
@@ -112,29 +112,36 @@ func (r *authRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Use
 }
 
 // Update updates a user in the database
-func (r *authRepository) Update(ctx context.Context, user domain.User) error {
+func (r *authRepository) Update(ctx context.Context, user domain.User) (*domain.User, error) {
 	query := `
-        UPDATE users
-        SET phone_number = $2, password = $3, full_name = $4, role = $5, pharmacy_id = $6, profile_picture = $7, updated_at = $8
-        WHERE id = $1
-    `
-	result, err := r.db.ExecContext(ctx, query,
+		UPDATE users
+		SET phone_number = COALESCE(NULLIF($2, ''), phone_number),
+			password = COALESCE(NULLIF($3, ''), password),
+			full_name = COALESCE(NULLIF($4, ''), full_name),
+			role = COALESCE(NULLIF($5, ''), role),
+			pharmacy_id = COALESCE(NULLIF($6::uuid, NULL), pharmacy_id),
+			profile_picture = COALESCE(NULLIF($7, ''), profile_picture),
+			updated_at = $8
+		WHERE id = $1
+		RETURNING id, phone_number, password, full_name, role, pharmacy_id, profile_picture, created_at, updated_at
+	`
+	var updatedUser domain.User
+	err := r.db.QueryRowContext(ctx, query,
 		user.ID, user.PhoneNumber, user.Password, user.FullName, user.Role, user.PharmacyID, user.ProfilePicture, user.UpdatedAt,
+	).Scan(
+		&updatedUser.ID, &updatedUser.PhoneNumber, &updatedUser.Password, &updatedUser.FullName,
+		&updatedUser.Role, &updatedUser.PharmacyID, &updatedUser.ProfilePicture,
+		&updatedUser.CreatedAt, &updatedUser.UpdatedAt,
 	)
+	if err == sql.ErrNoRows {
+		r.logger.Info().Str("id", user.ID.String()).Msg("User not found for update")
+		return nil, domain.ErrNotFound
+	}
 	if err != nil {
 		r.logger.Error().Err(err).Msg("Failed to update user")
-		return err
+		return nil, err
 	}
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		r.logger.Error().Err(err).Msg("Failed to check rows affected")
-		return err
-	}
-	if rowsAffected == 0 {
-		r.logger.Info().Str("id", user.ID.String()).Msg("User not found for update")
-		return domain.ErrNotFound
-	}
-	return nil
+	return &updatedUser, nil
 }
 func (r *authRepository) UploadProfilePicture(ctx context.Context, userID uuid.UUID, fileData []byte, fileExt string) (string, error) {
 	if !strings.HasPrefix(r.url, "https://") {
