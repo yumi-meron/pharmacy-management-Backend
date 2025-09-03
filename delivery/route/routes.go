@@ -19,6 +19,7 @@ func SetupRoutes(
 	medicineUsecase usecase.MedicineUsecase,
 	saleUsecase usecase.SaleUsecase,
 	orderUsecase usecase.OrderUsecase,
+	barcodeUsecase usecase.BarcodeUsecase,
 	cfg *config.Config,
 	validator *validator.Validate,
 ) {
@@ -26,9 +27,10 @@ func SetupRoutes(
 	authHandler := http.NewAuthHandler(authUsecase, validator)
 	userHandler := http.NewUserHandler(userUsecase, validator)
 	pharmacyHandler := http.NewPharmacyHandler(pharmacyUsecase, validator)
-	medicineHandler := http.NewMedicineHandler(medicineUsecase, authUsecase, validator)
+	medicineHandler := http.NewMedicineHandler(medicineUsecase, validator)
 	saleHandler := http.NewSaleHandler(saleUsecase, validator)
 	orderHandler := http.NewOrderHandler(orderUsecase, validator)
+	barcodeHandler := http.NewBarcodeHandler(barcodeUsecase)
 
 	// Middleware
 	authMiddleware := middleware.AuthMiddleware(cfg, authUsecase)
@@ -111,5 +113,13 @@ func SetupRoutes(
 		orders.POST("", orderHandler.CreateOrder)
 		orders.POST("/:id/request-otp", orderHandler.RequestOTP)
 		orders.POST("/:id/verify", orderHandler.VerifyOrder)
+	}
+
+	// Barcode routes (protected)
+	barcodes := r.Group("/api/barcodes")
+	barcodes.Use(authMiddleware)
+	{
+		barcodes.GET("/:barcode_value", barcodeHandler.LookupBarcode)
+		barcodes.POST("", barcodeHandler.AddBarcodes)
 	}
 }

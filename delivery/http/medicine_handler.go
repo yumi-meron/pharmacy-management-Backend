@@ -22,13 +22,12 @@ import (
 // MedicineHandler handles medicine-related HTTP requests
 type MedicineHandler struct {
 	usecase   usecase.MedicineUsecase
-	ausecase  usecase.AuthUsecase
 	validator *validator.Validate
 }
 
 // NewMedicineHandler creates a new MedicineHandler
-func NewMedicineHandler(usecase usecase.MedicineUsecase, ausecase usecase.AuthUsecase, validator *validator.Validate) *MedicineHandler {
-	return &MedicineHandler{usecase, ausecase, validator}
+func NewMedicineHandler(usecase usecase.MedicineUsecase, validator *validator.Validate) *MedicineHandler {
+	return &MedicineHandler{usecase, validator}
 }
 
 // Create handles POST /api/medicines
@@ -303,6 +302,7 @@ func (h *MedicineHandler) UpdateVariant(c *gin.Context) {
 	var input = domain.UpdateMedicineVariantInput{
 		Name:         c.PostForm("name"),
 		Brand:        c.PostForm("brand"),
+		Description:  c.PostForm("description"),
 		Barcode:      c.PostForm("barcode"),
 		Unit:         c.PostForm("unit"),
 		PricePerUnit: parseFloat(c.PostForm("price_per_unit")),
@@ -341,7 +341,7 @@ func (h *MedicineHandler) UpdateVariant(c *gin.Context) {
 			return
 		}
 
-		pictureURL, err = h.ausecase.UploadProfilePicture(c.Request.Context(), variantID, fileData, fileExt)
+		pictureURL, err = h.usecase.UploadPicture(c.Request.Context(), variantID, fileData, fileExt)
 		if err != nil {
 			utils.ErrorResponse(c, http.StatusInternalServerError, fmt.Errorf("failed to upload variant picture: %v", err))
 			return
@@ -349,7 +349,8 @@ func (h *MedicineHandler) UpdateVariant(c *gin.Context) {
 		input.Picture = pictureURL
 	}
 
-	if err := h.usecase.UpdateVariant(c.Request.Context(), role.(string), pharmacyID, medicineID, variantID, input); err != nil {
+	medicine, err := h.usecase.UpdateVariant(c.Request.Context(), role.(string), pharmacyID, medicineID, variantID, input)
+	if err != nil {
 		switch err {
 		case domain.ErrVariantNotFound:
 			utils.ErrorResponse(c, http.StatusNotFound, err)
@@ -363,7 +364,7 @@ func (h *MedicineHandler) UpdateVariant(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Medicine variant updated successfully"})
+	c.JSON(http.StatusOK, medicine)
 }
 
 // Helper functions for parsing form data

@@ -1,17 +1,22 @@
 package repository
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
+	"time"
 
 	"pharmacy-management-backend/domain"
 
 	"github.com/google/uuid"
 	"github.com/lib/pq"
 	"github.com/rs/zerolog"
+	storage "github.com/supabase-community/storage-go"
+	"github.com/supabase-community/supabase-go"
 )
 
 // MedicineRepository defines the interface for medicine-related database operations
@@ -29,17 +34,25 @@ type MedicineRepository interface {
 	DeleteVariant(ctx context.Context, id uuid.UUID) error
 	CheckBarcodeExists(ctx context.Context, barcode string) (bool, error)
 	SearchMedicines(ctx context.Context, params domain.SearchParams) ([]domain.Medicine, error)
+	UploadPicture(ctx context.Context, medicineID uuid.UUID, fileData []byte, fileExt string) (string, error)
 }
 
 // medicineRepository implements MedicineRepository
 type medicineRepository struct {
-	db     *sql.DB
-	logger zerolog.Logger
+	db       *sql.DB
+	logger   zerolog.Logger
+	supabase *supabase.Client
+	url      string
 }
 
 // NewMedicineRepository creates a new MedicineRepository
-func NewMedicineRepository(db *sql.DB, logger zerolog.Logger) MedicineRepository {
-	return &medicineRepository{db, logger}
+func NewMedicineRepository(db *sql.DB, logger zerolog.Logger, supabaseClient *supabase.Client, supabaseURL string) MedicineRepository {
+	return &medicineRepository{
+		db:       db,
+		logger:   logger,
+		supabase: supabaseClient,
+		url:      supabaseURL,
+	}
 }
 
 // Create inserts a new medicine into the database
@@ -280,6 +293,64 @@ func (r *medicineRepository) DeleteVariant(ctx context.Context, id uuid.UUID) er
 		return domain.ErrVariantNotFound
 	}
 	return nil
+}
+
+func (r *medicineRepository) UploadPicture(ctx context.Context, medicineID uuid.UUID, fileData []byte, fileExt string) (string, error) {
+	if !strings.HasPrefix(r.url, "https://") {
+		r.logger.Error().Str("url", r.url).Msg("Invalid Supabase storage URL")
+		return "", fmt.Errorf("invalid Supabase storage URL: %s", r.url)
+	}
+
+	if len(fileData) == 0 {
+		r.logger.Error().Msg("Empty file data provided")
+		return "", fmt.Errorf("empty file data provided")
+	}
+
+	// Normalize file extension
+	fileExt = strings.ToLower(strings.TrimPrefix(fileExt, "."))
+
+	// Dynamically determine content type
+	contentType := http.DetectContentType(fileData)
+	if !strings.HasPrefix(contentType, "image/") {
+		r.logger.Error().Str("content_type", contentType).Msg("Unsupported file type")
+		return "", fmt.Errorf("unsupported file type: %s", contentType)
+	}
+
+	filename := fmt.Sprintf("%s_medicine_picture_%d.%s", medicineID, time.Now().UnixNano(), fileExt)
+	bucket := "medicine_picture"
+
+	uploadResponse, err := r.supabase.Storage.UploadFile(bucket, filename, bytes.NewReader(fileData), storage.FileOptions{
+		ContentType: &contentType,
+	})
+	if err != nil {
+		r.logger.Error().
+			Err(err).
+			Str("bucket", bucket).
+			Str("filename", filename).
+			Msgf("Failed to upload medicine picture: %v", err)
+		return "", fmt.Errorf("failed to upload medicine picture to bucket %s: %w", bucket, err)
+	}
+
+	// Construct public URL
+	publicURL := fmt.Sprintf("%s/storage/v1/object/public/%s", r.url, uploadResponse.Key)
+	r.logger.Info().Str("public_url", publicURL).Msg("medicine picture uploaded successfully")
+
+	// Verify the URL is accessible
+	resp, err := http.Head(publicURL)
+	if err != nil {
+		r.logger.Debug().
+			Int("file_size", len(fileData)).
+			Str("content_type", contentType).
+			Msg("Validating file data")
+		r.logger.Error().
+			Err(err).
+			Str("public_url", publicURL).
+			Int("status_code", resp.StatusCode).
+			Msg("Failed to verify public URL")
+		return "", fmt.Errorf("failed to verify public URL: %v", err)
+	}
+
+	return publicURL, nil
 }
 
 // CheckBarcodeExists checks if a barcode is already taken

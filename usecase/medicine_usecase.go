@@ -20,9 +20,10 @@ type MedicineUsecase interface {
 	CreateVariant(ctx context.Context, callerRole string, callerPharmacyID, medicineID uuid.UUID, input domain.CreateMedicineVariantInput) error
 	GetVariants(ctx context.Context, callerRole string, callerPharmacyID, medicineID uuid.UUID) ([]domain.MedicineVariant, error)
 	GetVariantByID(ctx context.Context, callerRole string, callerPharmacyID, medicineID, variantID uuid.UUID) (*domain.MedicineVariant, error)
-	UpdateVariant(ctx context.Context, callerRole string, callerPharmacyID, medicineID, variantID uuid.UUID, input domain.UpdateMedicineVariantInput) error
+	UpdateVariant(ctx context.Context, callerRole string, callerPharmacyID, medicineID, variantID uuid.UUID, input domain.UpdateMedicineVariantInput) (*domain.Medicine, error)
 	DeleteVariant(ctx context.Context, callerRole string, variantID uuid.UUID) error
 	SearchMedicines(ctx context.Context, params domain.SearchParams) ([]domain.Medicine, error)
+	UploadPicture(ctx context.Context, userID uuid.UUID, fileData []byte, fileExt string) (string, error)
 }
 
 // medicineUsecase implements MedicineUsecase
@@ -200,54 +201,89 @@ func (u *medicineUsecase) GetVariantByID(ctx context.Context, callerRole string,
 }
 
 // UpdateVariant updates a medicine variant
-func (u *medicineUsecase) UpdateVariant(ctx context.Context, callerRole string, callerPharmacyID, medicineID, variantID uuid.UUID, input domain.UpdateMedicineVariantInput) error {
+func (u *medicineUsecase) UpdateVariant(ctx context.Context, callerRole string, callerPharmacyID, medicineID, variantID uuid.UUID, input domain.UpdateMedicineVariantInput) (*domain.Medicine, error) {
 	if callerRole != string(domain.RoleAdmin) && callerRole != string(domain.RoleOwner) {
-		return domain.ErrUnauthorized
+		return nil, domain.ErrUnauthorized
 	}
 
 	medicine, err := u.repo.GetByID(ctx, medicineID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if callerRole == string(domain.RoleOwner) && callerPharmacyID != medicine.PharmacyID {
-		return domain.ErrUnauthorized
+		return nil, domain.ErrUnauthorized
 	}
 
 	variant, err := u.repo.GetVariantByID(ctx, variantID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if variant.MedicineID != medicineID {
-		return domain.ErrVariantNotFound
+		return nil, domain.ErrVariantNotFound
 	}
 
-	if input.Barcode != variant.Barcode {
+	if input.Barcode != "" && input.Barcode != variant.Barcode {
 		if exists, err := u.repo.CheckBarcodeExists(ctx, input.Barcode); err != nil {
-			return err
+			return nil, err
 		} else if exists {
-			return domain.ErrBarcodeTaken
+			return nil, domain.ErrBarcodeTaken
 		}
 	}
+	//update medicine fields
 
-	medicine.Name = input.Name
-	medicine.Description = input.Description
-	medicine.Picture = input.Picture
-	medicine.UpdatedAt = time.Now().UTC()
+	if input.Description != "" {
+		medicine.Description = input.Description
+	}
 
-	variant.Brand = input.Brand
-	variant.Barcode = input.Barcode
-	variant.Unit = input.Unit
-	variant.PricePerUnit = input.PricePerUnit
-	variant.ExpiryDate = input.ExpiryDate
-	variant.Stock = input.Stock
-	variant.UpdatedAt = time.Now().UTC()
+	if input.Name != "" {
+		medicine.Name = input.Name
+	}
+
+	if input.Picture != "" {
+		medicine.Picture = input.Picture
+	}
 
 	if err := u.repo.Update(ctx, *medicine); err != nil {
-		return err
+		return nil, err
 	}
-	return u.repo.UpdateVariant(ctx, *variant)
+
+	if input.Brand != "" {
+		variant.Brand = input.Brand
+	}
+	if input.Barcode != "" {
+		variant.Barcode = input.Barcode
+	}
+	if input.Unit != "" {
+		variant.Unit = input.Unit
+	}
+	if input.PricePerUnit > 0 {
+		variant.PricePerUnit = input.PricePerUnit
+	}
+	if !input.ExpiryDate.IsZero() {
+		variant.ExpiryDate = input.ExpiryDate
+	}
+	if input.Stock >= 0 {
+		variant.Stock = input.Stock
+	}
+	variant.UpdatedAt = time.Now().UTC()
+
+	err = u.repo.UpdateVariant(ctx, *variant)
+	if err != nil {
+		return nil, err
+	}
+	medicine, err = u.repo.GetByID(ctx, medicineID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Return the modified medicine
+	return medicine, nil
+}
+
+func (u *medicineUsecase) UploadPicture(ctx context.Context, userID uuid.UUID, fileData []byte, fileExt string) (string, error) {
+	return u.repo.UploadPicture(ctx, userID, fileData, fileExt)
 }
 
 // DeleteVariant deletes a medicine variant (Admin-only)

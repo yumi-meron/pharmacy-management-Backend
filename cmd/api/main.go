@@ -55,9 +55,10 @@ func main() {
 	// Initialize repositories
 	authRepo := repository.NewAuthRepository(db, logger, supabaseClient, cfg.SupabaseURL)
 	pharmacyRepo := repository.NewPharmacyRepository(db, logger)
-	medicineRepo := repository.NewMedicineRepository(db, logger)
+	medicineRepo := repository.NewMedicineRepository(db, logger, supabaseClient, cfg.SupabaseURL)
 	saleRepo := repository.NewSaleRepository(db, logger)
 	orderRepo := repository.NewOrderRepository(db, logger)
+	barcodeRepo := repository.NewBarcodeRepository(db, logger)
 
 	// Initialize use cases
 	twilioService, ok := smsService.(*infrastructure.TwilioService)
@@ -70,13 +71,14 @@ func main() {
 	medicineUsecase := usecase.NewMedicineUsecase(medicineRepo, pharmacyRepo)
 	saleUsecase := usecase.NewSaleUsecase(saleRepo, medicineRepo)
 	orderUsecase := usecase.NewOrderUsecase(orderRepo, medicineRepo, smsService, logger)
+	barcodeUsecase := usecase.NewBarcodeUsecase(barcodeRepo, medicineRepo)
 
 	// Initialize Gin router
 	router := gin.Default()
 	router.Use(middleware.LoggerMiddleware(logger))
 
 	// Set up routes
-	route.SetupRoutes(router, authUsecase, userUsecase, pharmacyUsecase, medicineUsecase, saleUsecase, orderUsecase, cfg, v)
+	route.SetupRoutes(router, authUsecase, userUsecase, pharmacyUsecase, medicineUsecase, saleUsecase, orderUsecase, barcodeUsecase, cfg, v)
 
 	// Start server with graceful shutdown
 	srv := &http.Server{

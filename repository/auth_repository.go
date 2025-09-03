@@ -167,28 +167,6 @@ func (r *authRepository) UploadProfilePicture(ctx context.Context, userID uuid.U
 	filename := fmt.Sprintf("%s_profile_picture_%d.%s", userID, time.Now().UnixNano(), fileExt)
 	bucket := "profile_picture"
 
-	// Log file data preview
-	filePreview := fileData
-	if len(fileData) > 4 {
-		filePreview = fileData[:4]
-	}
-
-	r.logger.Info().
-		Str("bucket", bucket).
-		Str("filename", filename).
-		Int("file_size", len(fileData)).
-		Str("file_ext", fileExt).
-		Bytes("file_preview", filePreview).
-		Str("supabase_url", r.url).
-		Msg("Uploading profile picture")
-
-	r.logger.Debug().
-		Str("bucket", bucket).
-		Str("filename", filename).
-		Int("file_size", len(fileData)).
-		Str("content_type", contentType).
-		Msg("Attempting to upload profile picture")
-
 	uploadResponse, err := r.supabase.Storage.UploadFile(bucket, filename, bytes.NewReader(fileData), storage.FileOptions{
 		ContentType: &contentType,
 	})
