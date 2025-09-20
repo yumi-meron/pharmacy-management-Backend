@@ -237,6 +237,10 @@ func (u *medicineUsecase) UpdateVariant(ctx context.Context, callerRole string, 
 		medicine.Description = input.Description
 	}
 
+	if input.MedicalUsage != "" {
+		medicine.MedicalUsage = input.MedicalUsage
+	}
+
 	if input.Name != "" {
 		medicine.Name = input.Name
 	}

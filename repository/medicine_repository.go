@@ -58,7 +58,7 @@ func NewMedicineRepository(db *sql.DB, logger zerolog.Logger, supabaseClient *su
 // Create inserts a new medicine into the database
 func (r *medicineRepository) Create(ctx context.Context, medicine domain.Medicine) error {
 	query := `
-        INSERT INTO medicines (id, pharmacy_id, name, description, picture, created_at, updated_at)
+        INSERT INTO medicines (id, pharmacy_id, name, description, medical_usage, picture, created_at, updated_at)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
     `
 	_, err := r.db.ExecContext(ctx, query,
@@ -74,12 +74,12 @@ func (r *medicineRepository) Create(ctx context.Context, medicine domain.Medicin
 // GetByID retrieves a medicine by ID
 func (r *medicineRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Medicine, error) {
 	query := `
-        SELECT id, pharmacy_id, name, description, picture, created_at, updated_at
+        SELECT id, pharmacy_id, name, description, medical_usage, picture, created_at, updated_at
         FROM medicines WHERE id = $1
     `
 	var m domain.Medicine
 	err := r.db.QueryRowContext(ctx, query, id).Scan(
-		&m.ID, &m.PharmacyID, &m.Name, &m.Description, &m.Picture, &m.CreatedAt, &m.UpdatedAt,
+		&m.ID, &m.PharmacyID, &m.Name, &m.Description, &m.MedicalUsage, &m.Picture, &m.CreatedAt, &m.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		r.logger.Info().Str("id", id.String()).Msg("Medicine not found")
@@ -101,7 +101,7 @@ func (r *medicineRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain
 // GetAll retrieves medicines for a pharmacy (or all for Admin)
 func (r *medicineRepository) GetAll(ctx context.Context, pharmacyID uuid.UUID) ([]domain.Medicine, error) {
 	query := `
-        SELECT id, pharmacy_id, name, description, picture, created_at, updated_at
+        SELECT id, pharmacy_id, name, description, medical_usage, picture, created_at, updated_at
         FROM medicines
         WHERE ($1::uuid IS NULL OR pharmacy_id = $1)
     `
@@ -115,7 +115,7 @@ func (r *medicineRepository) GetAll(ctx context.Context, pharmacyID uuid.UUID) (
 	var medicines []domain.Medicine
 	for rows.Next() {
 		var m domain.Medicine
-		if err := rows.Scan(&m.ID, &m.PharmacyID, &m.Name, &m.Description, &m.Picture, &m.CreatedAt, &m.UpdatedAt); err != nil {
+		if err := rows.Scan(&m.ID, &m.PharmacyID, &m.Name, &m.Description, &m.MedicalUsage, &m.Picture, &m.CreatedAt, &m.UpdatedAt); err != nil {
 			r.logger.Error().Err(err).Msg("Failed to scan medicine")
 			return nil, err
 		}
@@ -133,11 +133,11 @@ func (r *medicineRepository) GetAll(ctx context.Context, pharmacyID uuid.UUID) (
 func (r *medicineRepository) Update(ctx context.Context, medicine domain.Medicine) error {
 	query := `
         UPDATE medicines
-        SET name = $2, description = $3, picture = $4, updated_at = $5
+        SET name = $2, description = $3, picture = $4, updated_at = $5, medical_usage = $6
         WHERE id = $1
     `
 	result, err := r.db.ExecContext(ctx, query,
-		medicine.ID, medicine.Name, medicine.Description, medicine.Picture, medicine.UpdatedAt,
+		medicine.ID, medicine.Name, medicine.Description, medicine.Picture, medicine.UpdatedAt, medicine.MedicalUsage,
 	)
 	if err != nil {
 		r.logger.Error().Err(err).Msg("Failed to update medicine")
