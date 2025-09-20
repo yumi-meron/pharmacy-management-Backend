@@ -78,6 +78,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 func (h *AuthHandler) RequestPasswordReset(c *gin.Context) {
 	var input struct {
 		PhoneNumber string `json:"phone_number" validate:"required,phone"`
+		NewPassword string `json:"new_password" validate:"required,min=8"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		utils.ErrorResponse(c, http.StatusBadRequest, err)
@@ -91,7 +92,7 @@ func (h *AuthHandler) RequestPasswordReset(c *gin.Context) {
 	}
 
 	// Request reset token
-	if err := h.usecase.RequestPasswordReset(c.Request.Context(), input.PhoneNumber); err != nil {
+	if err := h.usecase.RequestPasswordReset(c.Request.Context(), input.PhoneNumber, input.NewPassword); err != nil {
 		switch err {
 		case domain.ErrNotFound:
 			utils.ErrorResponse(c, http.StatusNotFound, err)
@@ -107,8 +108,7 @@ func (h *AuthHandler) RequestPasswordReset(c *gin.Context) {
 // ResetPassword handles POST /auth/reset-password
 func (h *AuthHandler) ResetPassword(c *gin.Context) {
 	var input struct {
-		Token       string `json:"token" validate:"required"`
-		NewPassword string `json:"new_password" validate:"required,min=8"`
+		OTP string `json:"otp" validate:"required"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		utils.ErrorResponse(c, http.StatusBadRequest, err)
@@ -122,7 +122,7 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 	}
 
 	// Reset password
-	if err := h.usecase.ResetPassword(c.Request.Context(), input.Token, input.NewPassword); err != nil {
+	if err := h.usecase.ResetPassword(c.Request.Context(), input.OTP); err != nil {
 		switch err {
 		case domain.ErrInvalidResetToken:
 			utils.ErrorResponse(c, http.StatusBadRequest, err)

@@ -18,8 +18,8 @@ import (
 // AuthUsecase defines the interface for authentication-related business logic
 type AuthUsecase interface {
 	Login(ctx context.Context, phoneNumber, password string) (string, string, *domain.User, error)
-	RequestPasswordReset(ctx context.Context, phoneNumber string) error
-	ResetPassword(ctx context.Context, token, newPassword string) error
+	RequestPasswordReset(ctx context.Context, phoneNumber string, newPassword string) error
+	ResetPassword(ctx context.Context, otp string) error
 	RefreshToken(ctx context.Context, refreshToken string) (string, string, error)
 	GetProfile(ctx context.Context, userID uuid.UUID) (*domain.User, error)
 	UpdateProfile(ctx context.Context, userID uuid.UUID, input domain.UpdateProfileInput) (*domain.User, error)
@@ -76,7 +76,7 @@ func (u *authUsecase) Login(ctx context.Context, phoneNumber, password string) (
 }
 
 // RequestPasswordReset sends a reset token via SMS
-func (u *authUsecase) RequestPasswordReset(ctx context.Context, phoneNumber string) error {
+func (u *authUsecase) RequestPasswordReset(ctx context.Context, phoneNumber, newPassword string) error {
 	user, err := u.repo.GetByPhone(ctx, phoneNumber)
 	if err == domain.ErrNotFound {
 		return domain.ErrNotFound
@@ -89,8 +89,15 @@ func (u *authUsecase) RequestPasswordReset(ctx context.Context, phoneNumber stri
 	otp := utils.GenerateOTP()
 	expiry := time.Now().Add(15 * time.Minute)
 
+	// Hash new password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	hashedPasswordStr := string(hashedPassword)
+
 	// Save reset token
-	if err := u.repo.SaveResetToken(ctx, user.ID, otp, expiry); err != nil {
+	if err := u.repo.SaveResetToken(ctx, user.ID, otp, hashedPasswordStr, expiry); err != nil {
 		return err
 	}
 
@@ -100,8 +107,8 @@ func (u *authUsecase) RequestPasswordReset(ctx context.Context, phoneNumber stri
 }
 
 // ResetPassword updates the user's password using a reset token
-func (u *authUsecase) ResetPassword(ctx context.Context, token, newPassword string) error {
-	userID, err := u.repo.GetResetToken(ctx, token)
+func (u *authUsecase) ResetPassword(ctx context.Context, otp string) error {
+	userID, newPassword, err := u.repo.GetResetToken(ctx, otp)
 	if err != nil {
 		return domain.ErrInvalidResetToken
 	}
@@ -112,14 +119,8 @@ func (u *authUsecase) ResetPassword(ctx context.Context, token, newPassword stri
 		return err
 	}
 
-	// Hash new password
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
-	if err != nil {
-		return err
-	}
-
 	// Update user password
-	user.Password = string(hashedPassword)
+	user.Password = newPassword
 	user.UpdatedAt = time.Now()
 	_, err = u.repo.Update(ctx, *user)
 	if err != nil {
@@ -127,7 +128,7 @@ func (u *authUsecase) ResetPassword(ctx context.Context, token, newPassword stri
 	}
 
 	// Delete reset token
-	return u.repo.DeleteResetToken(ctx, token)
+	return u.repo.DeleteResetToken(ctx, otp)
 }
 
 // RefreshToken generates new access and refresh tokens

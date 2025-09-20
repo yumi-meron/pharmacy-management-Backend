@@ -24,11 +24,11 @@ type AuthRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.User, error)
 	Update(ctx context.Context, user domain.User) (*domain.User, error)
 	UploadProfilePicture(ctx context.Context, userID uuid.UUID, fileData []byte, fileExt string) (string, error)
-	SaveRefreshToken(ctx context.Context, userID uuid.UUID, token string, expiresAt time.Time) error
+	SaveRefreshToken(ctx context.Context, userID uuid.UUID, otp string, expiresAt time.Time) error
 	GetRefreshToken(ctx context.Context, token string) (*uuid.UUID, error)
 	DeleteRefreshToken(ctx context.Context, token string) error
-	SaveResetToken(ctx context.Context, userID uuid.UUID, token string, expiresAt time.Time) error
-	GetResetToken(ctx context.Context, token string) (*uuid.UUID, error)
+	SaveResetToken(ctx context.Context, userID uuid.UUID, token, newPassword string, expiresAt time.Time) error
+	GetResetToken(ctx context.Context, token string) (*uuid.UUID, string, error)
 	DeleteResetToken(ctx context.Context, token string) error
 	GetPharmacists(ctx context.Context, pharmacyID *uuid.UUID) ([]domain.User, error)
 	IsTokenBlacklisted(ctx context.Context, token string) (bool, error)
@@ -247,12 +247,12 @@ func (r *authRepository) DeleteRefreshToken(ctx context.Context, token string) e
 }
 
 // SaveResetToken saves a password reset token
-func (r *authRepository) SaveResetToken(ctx context.Context, userID uuid.UUID, token string, expiresAt time.Time) error {
+func (r *authRepository) SaveResetToken(ctx context.Context, userID uuid.UUID, token, newPassword string, expiresAt time.Time) error {
 	query := `
-        INSERT INTO password_reset_tokens (user_id, token, expires_at, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $4)
+        INSERT INTO password_reset_tokens (user_id, token, new_password, expires_at, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $5)
     `
-	_, err := r.db.ExecContext(ctx, query, userID, token, expiresAt, time.Now())
+	_, err := r.db.ExecContext(ctx, query, userID, token, newPassword, expiresAt, time.Now())
 	if err != nil {
 		r.logger.Error().Err(err).Msg("Failed to save reset token")
 		return err
@@ -261,23 +261,24 @@ func (r *authRepository) SaveResetToken(ctx context.Context, userID uuid.UUID, t
 }
 
 // GetResetToken retrieves a user ID by reset token
-func (r *authRepository) GetResetToken(ctx context.Context, token string) (*uuid.UUID, error) {
+func (r *authRepository) GetResetToken(ctx context.Context, token string) (*uuid.UUID, string, error) {
 	query := `
-        SELECT user_id
-        FROM password_reset_tokens
-        WHERE token = $1 AND expires_at > $2
-    `
+		SELECT user_id, new_password
+		FROM password_reset_tokens
+		WHERE token = $1 AND expires_at > $2
+	`
 	var userID uuid.UUID
-	err := r.db.QueryRowContext(ctx, query, token, time.Now()).Scan(&userID)
+	var newPassword string
+	err := r.db.QueryRowContext(ctx, query, token, time.Now()).Scan(&userID, &newPassword)
 	if err == sql.ErrNoRows {
 		r.logger.Info().Str("token", token).Msg("Reset token not found or expired")
-		return nil, domain.ErrInvalidResetToken
+		return nil, "", domain.ErrInvalidResetToken
 	}
 	if err != nil {
 		r.logger.Error().Err(err).Msg("Failed to get reset token")
-		return nil, err
+		return nil, "", err
 	}
-	return &userID, nil
+	return &userID, newPassword, nil
 }
 
 // DeleteResetToken deletes a reset token
