@@ -305,6 +305,10 @@ func (u *medicineUsecase) SearchMedicines(ctx context.Context, params domain.Sea
 		params.Filter = "name"
 	}
 
+	if params.Catagory != "Antibiotic" && params.Catagory != "Vitamins" && params.Catagory != "Pain Relief" && params.Catagory != "Cold & Flu" {
+		params.Catagory = "None"
+	}
+
 	// Set default pagination
 	if params.Limit <= 0 {
 		params.Limit = 10
