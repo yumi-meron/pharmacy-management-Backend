@@ -305,7 +305,9 @@ func (u *medicineUsecase) SearchMedicines(ctx context.Context, params domain.Sea
 		params.Filter = "name"
 	}
 
-	if params.Catagory != "Antibiotic" && params.Catagory != "Vitamins" && params.Catagory != "Pain Relief" && params.Catagory != "Cold & Flu" {
+	if params.Catagory == "Antibiotic" || params.Catagory == "Vitamins" || params.Catagory == "Pain Relief" || params.Catagory == "Cold & Flu" {
+
+	} else {
 		params.Catagory = "None"
 	}
 

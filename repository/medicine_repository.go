@@ -364,29 +364,42 @@ func (r *medicineRepository) CheckBarcodeExists(ctx context.Context, barcode str
 	}
 	return exists, nil
 }
-
 func (r *medicineRepository) SearchMedicines(ctx context.Context, params domain.SearchParams) ([]domain.Medicine, error) {
 	var query strings.Builder
 	var args []interface{}
 	argIndex := 1
 
 	query.WriteString(`
-    SELECT 
-        m.id, m.pharmacy_id, m.name, m.description, m.picture, m.created_at, m.updated_at,
-        array_agg(row_to_json(v)::text) as variants_json
-    FROM medicines m
-    LEFT JOIN medicine_variants v ON v.medicine_id = m.id
-    WHERE 1=1
+	SELECT 
+		m.id, m.pharmacy_id, m.name, m.description, m.picture, m.created_at, m.updated_at,
+		array_agg(row_to_json(v)::text) as variants_json
+	FROM medicines m
+	LEFT JOIN medicine_variants v ON v.medicine_id = m.id
+	LEFT JOIN categories c ON c.id = m.category_id
+	WHERE 1=1
 `)
 
 	// PharmacyID filter
 	if params.PharmacyID != uuid.Nil {
 		query.WriteString(fmt.Sprintf(" AND m.pharmacy_id = $%d", argIndex))
 		args = append(args, params.PharmacyID)
+		r.logger.Debug().Interface("pharmacy_id", params.PharmacyID).Msg("Applied pharmacy filter")
 		argIndex++
+	} else {
+		r.logger.Debug().Msg("No pharmacy filter applied")
 	}
 
-	// Dynamic full-text search based on filter
+	// Category filter (only include if not "None")
+	if params.Catagory != "None" {
+		query.WriteString(fmt.Sprintf(" AND c.name ILIKE $%d", argIndex))
+		args = append(args, params.Catagory)
+		r.logger.Debug().Str("category", params.Catagory).Msg("Applied category filter")
+		argIndex++
+	} else {
+		r.logger.Debug().Str("category", params.Catagory).Msg("Category filter skipped")
+	}
+
+	// Query + Filter (full-text search)
 	if params.Query != "" {
 		var tsField string
 		switch params.Filter {
@@ -399,21 +412,33 @@ func (r *medicineRepository) SearchMedicines(ctx context.Context, params domain.
 		}
 		query.WriteString(fmt.Sprintf(" AND %s @@ to_tsquery('english', $%d)", tsField, argIndex))
 		args = append(args, params.Query)
+		r.logger.Debug().
+			Str("filter", params.Filter).
+			Str("query", params.Query).
+			Str("ts_field", tsField).
+			Msg("Applied text search filter")
 		argIndex++
+	} else {
+		r.logger.Debug().Msg("No text search filter applied")
 	}
 
 	// Group and paginate
 	query.WriteString(fmt.Sprintf(`
-    GROUP BY m.id, m.pharmacy_id, m.name, m.description, m.picture, m.created_at, m.updated_at
-    ORDER BY m.name ASC
-    LIMIT $%d OFFSET $%d
+	GROUP BY m.id, m.pharmacy_id, m.name, m.description, m.picture, m.created_at, m.updated_at
+	ORDER BY m.name ASC
+	LIMIT $%d OFFSET $%d
 `, argIndex, argIndex+1))
 	args = append(args, params.Limit, params.Offset)
 
-	r.logger.Debug().Str("query", query.String()).Interface("args", args).Msg("Executing SearchMedicines query")
+	r.logger.Debug().
+		Str("final_query", query.String()).
+		Interface("args", args).
+		Msg("Executing SearchMedicines query")
+
 	// Execute query
 	rows, err := r.db.QueryContext(ctx, query.String(), args...)
 	if err != nil {
+		r.logger.Error().Err(err).Msg("Failed to execute search query")
 		return nil, fmt.Errorf("failed to execute search query: %w", err)
 	}
 	defer rows.Close()
@@ -427,6 +452,7 @@ func (r *medicineRepository) SearchMedicines(ctx context.Context, params domain.
 			pq.Array(&variantsJSON),
 		)
 		if err != nil {
+			r.logger.Error().Err(err).Msg("Failed to scan medicine row")
 			return nil, fmt.Errorf("failed to scan medicine row: %w", err)
 		}
 
@@ -437,17 +463,28 @@ func (r *medicineRepository) SearchMedicines(ctx context.Context, params domain.
 			}
 			var v domain.MedicineVariant
 			if err := json.Unmarshal([]byte(vj), &v); err != nil {
-				r.logger.Error().Err(err).Str("variant_json", vj).Msg("Failed to unmarshal variant JSON")
+				r.logger.Error().
+					Err(err).
+					Str("variant_json", vj).
+					Msg("Failed to unmarshal variant JSON")
 				return nil, fmt.Errorf("failed to unmarshal variant JSON: %w", err)
 			}
 			m.Variants = append(m.Variants, v)
 		}
 
+		r.logger.Debug().
+			Str("medicine_id", m.ID.String()).
+			Int("variant_count", len(m.Variants)).
+			Msg("Fetched medicine row")
+
 		medicines = append(medicines, m)
 	}
 
 	if err = rows.Err(); err != nil {
+		r.logger.Error().Err(err).Msg("Error iterating medicine rows")
 		return nil, fmt.Errorf("error iterating rows: %w", err)
 	}
+
+	r.logger.Debug().Int("result_count", len(medicines)).Msg("SearchMedicines completed successfully")
 	return medicines, nil
 }

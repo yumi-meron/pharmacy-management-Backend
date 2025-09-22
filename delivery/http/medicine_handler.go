@@ -444,6 +444,8 @@ func (h *MedicineHandler) SearchMedicines(c *gin.Context) {
 		}
 	}
 
+	fmt.Println(params)
+
 	// Parse PharmacyID from context (set by middleware)
 	pharmacyIDStr, exists := c.Get("pharmacy_id")
 	if exists {
